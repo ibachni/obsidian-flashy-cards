@@ -1,0 +1,9 @@
+{
+	"id": "learning-system",
+	"name": "Learning System",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "FSRS-scheduled flashcards inside Obsidian.",
+	"author": "Nicolas Ibach",
+	"isDesktopOnly": false
+}
