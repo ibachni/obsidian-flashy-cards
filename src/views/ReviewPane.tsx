@@ -1,0 +1,160 @@
+import { useState } from "react";
+import { Notice } from "obsidian";
+import { useCardStore } from "../cards/store";
+import { nextDueAfter, pickNext } from "../cards/picker";
+import { Rating, type Grade } from "../srs/fsrs-engine";
+import { formatDelta, parseDueDate } from "./date-utils";
+import { MarkdownBlock } from "./MarkdownBlock";
+import { usePluginContext } from "./PluginContext";
+import { ViewSwitcher } from "./ViewSwitcher";
+
+export function ReviewPane() {
+	const { plugin } = usePluginContext();
+	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const reviewScope = useCardStore((s) => s.reviewScope);
+	const clearReviewScope = useCardStore((s) => s.clearReviewScope);
+
+	const [revealed, setRevealed] = useState(false);
+	const [doneCount, setDoneCount] = useState(0);
+
+	const cardArray = Array.from(cardsByPath.values());
+	const now = new Date();
+	const scopedArray =
+		reviewScope === null
+			? cardArray
+			: cardArray.filter((c) => reviewScope.includes(c.path));
+	const due = scopedArray.filter((c) => parseDueDate(c.fm.fsrs_due) <= now);
+	const newCount = scopedArray.filter(
+		(c) => c.fm.fsrs_state === "new",
+	).length;
+	const current = pickNext(cardArray, now, reviewScope);
+
+	if (!current) {
+		const next = nextDueAfter(cardArray, now, reviewScope);
+		const scopeWasActive = reviewScope !== null;
+		// Reaching empty in a scoped session releases the scope so the
+		// next time the user opens Review it iterates over the full deck.
+		if (scopeWasActive) clearReviewScope();
+		return (
+			<div className="flex flex-col gap-3 p-6">
+				<header className="flex items-center justify-between gap-2">
+					<h2 className="text-xl font-semibold">No cards due.</h2>
+					<ViewSwitcher active="review" variant="compact" />
+				</header>
+				{scopeWasActive && (
+					<span className="self-start rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
+						Reviewing scoped subset
+					</span>
+				)}
+				{next && (
+					<p className="text-sm text-muted">
+						Next card due in {formatDelta(next, now)}.
+					</p>
+				)}
+				<p className="text-xs text-muted">
+					{doneCount} done this session · {scopedArray.length} cards{" "}
+					{scopeWasActive ? "in scope" : "total"} · {newCount} new.
+				</p>
+			</div>
+		);
+	}
+
+	const grade = async (rating: Grade) => {
+		try {
+			await plugin.gradeAndPersist(current, rating);
+			setDoneCount((c) => c + 1);
+			setRevealed(false);
+		} catch (e) {
+			// Without this, a thrown error from gradeCard / processFrontMatter
+			// leaves the UI stuck on the same revealed card with no feedback.
+			// Surface as a Notice so the user can see what went wrong.
+			const msg = e instanceof Error ? e.message : String(e);
+			console.error("[learning-system] grade failed:", e);
+			new Notice(`Grade failed: ${msg}`);
+		}
+	};
+
+	return (
+		<div className="flex flex-col gap-4 p-6">
+			<header className="flex items-start justify-between gap-2">
+				<div className="flex flex-col gap-1">
+					{reviewScope !== null && (
+						<span className="self-start rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
+							Reviewing scoped subset
+						</span>
+					)}
+					<span className="text-xs uppercase tracking-wide text-muted">
+						{current.fm.topic}
+						{current.fm.section && ` · ${current.fm.section}`}
+						{` · due ${current.fm.fsrs_due}`}
+						{` · ${current.fm.fsrs_state}`}
+					</span>
+				</div>
+				<ViewSwitcher active="review" variant="compact" />
+			</header>
+
+			<section>
+				<h3 className="mb-2 text-xs uppercase tracking-wide text-muted">
+					Question
+				</h3>
+				<MarkdownBlock source={current.question} sourcePath={current.path} />
+			</section>
+
+			{revealed && (
+				<section className="border-t border-border pt-4">
+					<h3 className="mb-2 text-xs uppercase tracking-wide text-muted">
+						Answer
+					</h3>
+					<MarkdownBlock
+						source={current.answer}
+						sourcePath={current.path}
+					/>
+				</section>
+			)}
+
+			<div className="flex flex-wrap gap-2">
+				{!revealed ? (
+					<button
+						type="button"
+						className="inline-flex items-center justify-center rounded-md bg-fg! px-4 py-2 text-sm font-medium text-bg! shadow-sm transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+						onClick={() => setRevealed(true)}
+					>
+						Show answer
+					</button>
+				) : (
+					<>
+						<GradeButton label="Again" rating={Rating.Again} onClick={grade} />
+						<GradeButton label="Hard" rating={Rating.Hard} onClick={grade} />
+						<GradeButton label="Good" rating={Rating.Good} onClick={grade} />
+						<GradeButton label="Easy" rating={Rating.Easy} onClick={grade} />
+					</>
+				)}
+			</div>
+
+			<footer className="text-xs text-muted">
+				{doneCount} done · {due.length} due · {newCount} new
+			</footer>
+		</div>
+	);
+}
+
+function GradeButton({
+	label,
+	rating,
+	onClick,
+}: {
+	label: string;
+	rating: Grade;
+	onClick: (r: Grade) => void | Promise<void>;
+}) {
+	return (
+		<button
+			type="button"
+			className="inline-flex items-center justify-center rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-fg! shadow-sm transition-colors hover:bg-fg! hover:text-bg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+			onClick={() => void onClick(rating)}
+		>
+			{label}
+		</button>
+	);
+}
+

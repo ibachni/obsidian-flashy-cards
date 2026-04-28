@@ -4,16 +4,26 @@ import type { ParsedCard } from "./parser";
 interface CardStoreState {
 	cardsByPath: Map<string, ParsedCard>;
 	invalidByPath: Map<string, string>;
+	/**
+	 * Optional list of card paths the Review pane should iterate over.
+	 * `null` means "all cards in store". Set by Browse → "Test this
+	 * section"; cleared by Review when its scoped session reaches the
+	 * empty state.
+	 */
+	reviewScope: string[] | null;
 
 	setCard: (card: ParsedCard) => void;
 	setInvalid: (path: string, error: string) => void;
 	removeCard: (path: string) => void;
 	clear: () => void;
+	setReviewScope: (paths: string[] | null) => void;
+	clearReviewScope: () => void;
 }
 
 export const useCardStore = create<CardStoreState>((set) => ({
 	cardsByPath: new Map(),
 	invalidByPath: new Map(),
+	reviewScope: null,
 
 	setCard: (card) =>
 		set((s) => {
@@ -44,4 +54,7 @@ export const useCardStore = create<CardStoreState>((set) => ({
 
 	clear: () =>
 		set({ cardsByPath: new Map(), invalidByPath: new Map() }),
+
+	setReviewScope: (paths) => set({ reviewScope: paths }),
+	clearReviewScope: () => set({ reviewScope: null }),
 }));

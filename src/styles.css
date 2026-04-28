@@ -12,29 +12,71 @@
 
 /*
  * Theme tokens (rgb channels — used via rgb(var(--ls-...))).
- * Default is cream; .dark on the same root flips to dark mode.
+ * `.learning-system-root` provides ONLY the theme variables, so it is
+ * safe to apply to popovers / portaled elements that just need access
+ * to the tokens. The pane-only styles (bg, color, min-height) live in
+ * `.learning-system-pane` below — applying that class to a portaled
+ * fixed-positioned element would give it min-height: 100vh.
  *
- * Direct background-color/color/min-height are applied to the wrapper
- * itself so the entire pane is themed regardless of inner content.
- * Inner elements can still use Tailwind utilities (bg-bg, text-fg, etc.)
- * for finer-grained styling.
+ * `.dark` flips the variables to the dark-mode values.
  */
 .learning-system-root {
 	--ls-bg: 250 245 235;        /* cream */
-	--ls-fg: 30 30 30;
-	--ls-accent: 80 60 200;
+	--ls-fg: 36 30 22;           /* warm ink — temperature-matched to bg */
+	--ls-accent: 92 78 188;      /* refined indigo */
 	--ls-muted: 120 110 100;
+	/* Elevated surface — used for popovers/dropdowns. Must lift
+	   *clearly* above --ls-bg so transparent items don't read as a
+	   missing background. A subtle warm offset isn't enough on cream
+	   paper; we go to near-white and let the border + shadow keep the
+	   popover from feeling clinical. */
+	--ls-elevated: 255 254 250;
+	/* Hairline divisions — much lighter than --ls-muted, which is
+	   text-tier. Use border-border / divide-border / etc. anywhere a
+	   visual rule is needed. */
+	--ls-border: 228 218 200;
+	/* Neutral hover/secondary surface — distinct from accent so a
+	   passive hover doesn't read as a selection. Accent tints
+	   (bg-accent/10) stay reserved for selected / active states. */
+	--ls-subtle: 240 232 218;
 
-	background-color: rgb(var(--ls-bg));
-	color: rgb(var(--ls-fg));
-	min-height: 100%;
+	/* Semantic state colors used by CardRow tag pills.
+	   Same rgb-channel pattern as --ls-bg/fg/accent/muted so Tailwind's
+	   color-mix opacity utilities (e.g. bg-state-overdue/15) work. */
+	--ls-state-new: 70 110 200;        /* muted blue */
+	--ls-state-learning: 175 125 40;   /* tobacco amber */
+	--ls-state-review: 90 130 90;      /* sage green */
+	--ls-state-overdue: 185 78 78;     /* clay red */
 }
 
 .learning-system-root.dark {
-	--ls-bg: 18 18 20;
-	--ls-fg: 235 235 235;
-	--ls-accent: 140 130 230;
-	--ls-muted: 130 130 140;
+	/* Linear-style palette. Lifted-but-low surfaces with a faint cool
+	   undertone, soft warm-white text, recessive hairlines, and Linear's
+	   signature violet (adapted lighter for dark-mode legibility) as
+	   the only chromatic accent. */
+	--ls-bg: 28 28 31;           /* page bg — lifted ~10% off black */
+	--ls-fg: 233 233 236;        /* soft warm-white, not stark */
+	--ls-accent: 124 132 247;    /* Linear violet, adapted lighter */
+	--ls-muted: 138 138 147;     /* hint-tier secondary text */
+	--ls-elevated: 36 36 40;     /* popovers — Linear card lift */
+	--ls-border: 56 56 62;       /* visible-but-recessive hairlines */
+	--ls-subtle: 33 33 37;       /* hover surface — minimal lift */
+
+	--ls-state-new: 130 170 240;
+	--ls-state-learning: 230 180 90;
+	--ls-state-review: 140 200 140;
+	--ls-state-overdue: 240 130 130;
+}
+
+/*
+ * Pane-only styling — applied to View contentEls so the entire pane
+ * is themed and fills its parent. Kept off popovers (which need the
+ * variables but not the bg/min-height).
+ */
+.learning-system-pane {
+	background-color: rgb(var(--ls-bg));
+	color: rgb(var(--ls-fg));
+	min-height: 100%;
 }
 
 /*
@@ -48,4 +90,51 @@
 	--color-fg: rgb(var(--ls-fg));
 	--color-accent: rgb(var(--ls-accent));
 	--color-muted: rgb(var(--ls-muted));
+	--color-elevated: rgb(var(--ls-elevated));
+	--color-border: rgb(var(--ls-border));
+	--color-subtle: rgb(var(--ls-subtle));
+	--color-state-new: rgb(var(--ls-state-new));
+	--color-state-learning: rgb(var(--ls-state-learning));
+	--color-state-review: rgb(var(--ls-state-review));
+	--color-state-overdue: rgb(var(--ls-state-overdue));
+}
+
+/*
+ * Stack a Settings row vertically so the input gets full width.
+ * Used for long path-like values (cards root, holding file) where
+ * the default right-aligned input clips the visible portion.
+ *
+ * NOTE: targets Obsidian's internal `.setting-item-*` classes — if
+ * Obsidian renames them, update or remove. Acceptable risk for now.
+ */
+.ls-wide-input {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.5rem;
+}
+
+.ls-wide-input .setting-item-control {
+	width: 100%;
+	justify-content: stretch;
+}
+
+.ls-wide-input .setting-item-control input[type="text"] {
+	width: 100%;
+}
+
+/*
+ * Inline error message for a stacked setting. Hidden via the :empty
+ * selector when the validator clears the text — keeps the JS path
+ * pure (just setText, no element.style.display = ...). Avoids the
+ * obsidianmd/no-static-styles-assignment lint rule.
+ */
+.ls-setting-error {
+	color: var(--text-error);
+	font-size: 0.85em;
+	margin: -0.5rem 0 1rem 0;
+}
+
+.ls-setting-error:empty {
+	display: none;
+	margin: 0;
 }

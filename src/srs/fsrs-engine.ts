@@ -4,15 +4,30 @@ import {
 	Rating,
 	State,
 	type Card as FsrsCard,
+	type FSRS,
 	type Grade,
 } from "ts-fsrs";
 import type { CardFrontmatterT } from "../schema/card";
 
-// ts-fsrs is configured with library defaults except for fuzz, which is
-// enabled to spread cards across days when many are scheduled together.
-// Per phase1 risk register: leave parameters at defaults until P4.
-const params = generatorParameters({ enable_fuzz: true });
-const engine = fsrs(params);
+/**
+ * Tunable FSRS parameters surfaced in the Settings tab. `enable_fuzz`
+ * stays on always — without it, many cards graduate together and pile
+ * up on the same future day.
+ */
+export interface EngineParams {
+	request_retention?: number;
+	maximum_interval?: number;
+}
+
+export function makeEngine(params: EngineParams = {}): FSRS {
+	return fsrs(
+		generatorParameters({
+			enable_fuzz: true,
+			request_retention: params.request_retention ?? 0.9,
+			maximum_interval: params.maximum_interval ?? 36500,
+		}),
+	);
+}
 
 function fsrsStateToString(s: State): CardFrontmatterT["fsrs_state"] {
 	switch (s) {
@@ -95,7 +110,8 @@ function fromFsrsCard(card: FsrsCard, now: Date): FsrsUpdate {
 	};
 }
 
-export function gradeCard(
+export function gradeWith(
+	engine: FSRS,
 	fm: CardFrontmatterT,
 	rating: Grade,
 	now: Date = new Date(),
@@ -106,4 +122,4 @@ export function gradeCard(
 }
 
 export { Rating };
-export type { Grade };
+export type { Grade, FSRS };
