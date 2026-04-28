@@ -1,0 +1,51 @@
+/*
+ * Tailwind v4 input — compiled to /styles.css by @tailwindcss/cli.
+ *
+ * Preflight (Tailwind's global CSS reset) is intentionally NOT imported —
+ * it would touch every element on the page and leak into Obsidian's UI.
+ * We import only the theme + utilities layers, and rely on the
+ * `.learning-system-root` wrapper for cascade-based scoping.
+ */
+
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+/*
+ * Theme tokens (rgb channels — used via rgb(var(--ls-...))).
+ * Default is cream; .dark on the same root flips to dark mode.
+ *
+ * Direct background-color/color/min-height are applied to the wrapper
+ * itself so the entire pane is themed regardless of inner content.
+ * Inner elements can still use Tailwind utilities (bg-bg, text-fg, etc.)
+ * for finer-grained styling.
+ */
+.learning-system-root {
+	--ls-bg: 250 245 235;        /* cream */
+	--ls-fg: 30 30 30;
+	--ls-accent: 80 60 200;
+	--ls-muted: 120 110 100;
+
+	background-color: rgb(var(--ls-bg));
+	color: rgb(var(--ls-fg));
+	min-height: 100%;
+}
+
+.learning-system-root.dark {
+	--ls-bg: 18 18 20;
+	--ls-fg: 235 235 235;
+	--ls-accent: 140 130 230;
+	--ls-muted: 130 130 140;
+}
+
+/*
+ * Map our scoped CSS variables into Tailwind v4 theme tokens.
+ * This generates utilities like `bg-bg`, `text-fg`, `border-accent`, etc.,
+ * which resolve to the runtime values of --ls-* on .learning-system-root.
+ * Outside the wrapper, --ls-* is undefined — utilities are inert there.
+ */
+@theme {
+	--color-bg: rgb(var(--ls-bg));
+	--color-fg: rgb(var(--ls-fg));
+	--color-accent: rgb(var(--ls-accent));
+	--color-muted: rgb(var(--ls-muted));
+}
