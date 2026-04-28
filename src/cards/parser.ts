@@ -27,8 +27,10 @@ function stripFrontmatter(content: string): string {
  * Split a card body on H1 headings into a record of `heading → content`.
  * Naive splitter — does not handle H1s appearing inside code blocks.
  * The risk register notes this as a known edge case (P1 risks table).
+ *
+ * Exported for unit-testing.
  */
-function parseBodySections(body: string): Record<string, string> {
+export function parseBodySections(body: string): Record<string, string> {
 	const parts = body.split(/^# (.+)$/m);
 	// parts[0] is preamble (before first H1); parts[2k-1] is heading k, parts[2k] is content.
 	const sections: Record<string, string> = {};
