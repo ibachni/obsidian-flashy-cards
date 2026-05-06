@@ -68,9 +68,13 @@ function TopicTr({
 			onClick();
 		}
 	};
-	const rowClass = isSelected
-		? "bg-accent/10 cursor-pointer transition-colors"
-		: "cursor-pointer transition-colors hover:bg-subtle";
+	// Hover/selected painting lives in styles.css under `.ls-topic-row`
+	// — Tailwind utilities lose to Obsidian's table rules even with
+	// `!important` because Obsidian paints on <td>, which sits on top
+	// of the <tr> background. The CSS rule paints td directly.
+	const rowClass = `ls-topic-row${
+		isSelected ? " is-selected" : ""
+	} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40`;
 
 	return (
 		<tr

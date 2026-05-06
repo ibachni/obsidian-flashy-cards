@@ -36,25 +36,30 @@ export function ReviewPane() {
 		// next time the user opens Review it iterates over the full deck.
 		if (scopeWasActive) clearReviewScope();
 		return (
-			<div className="flex flex-col gap-3 p-6">
+			<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
 				<header className="flex items-center justify-between gap-2">
-					<h2 className="text-xl font-semibold">No cards due.</h2>
+					<h2 className="text-base font-semibold">Review</h2>
 					<ViewSwitcher active="review" variant="compact" />
 				</header>
-				{scopeWasActive && (
-					<span className="self-start rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
-						Reviewing scoped subset
-					</span>
-				)}
-				{next && (
-					<p className="text-sm text-muted">
-						Next card due in {formatDelta(next, now)}.
-					</p>
-				)}
-				<p className="text-xs text-muted">
-					{doneCount} done this session · {scopedArray.length} cards{" "}
-					{scopeWasActive ? "in scope" : "total"} · {newCount} new.
+
+				<p className="text-sm text-muted">
+					No cards due
+					{next && <> · next in {formatDelta(next, now)}</>}.
 				</p>
+
+				<footer className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-muted">
+					{scopeWasActive ? (
+						<span className="rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
+							Reviewing scoped subset
+						</span>
+					) : (
+						<span />
+					)}
+					<span>
+						{doneCount} done · {scopedArray.length}{" "}
+						{scopeWasActive ? "in scope" : "total"} · {newCount} new
+					</span>
+				</footer>
 			</div>
 		);
 	}
@@ -75,21 +80,9 @@ export function ReviewPane() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 p-6">
-			<header className="flex items-start justify-between gap-2">
-				<div className="flex flex-col gap-1">
-					{reviewScope !== null && (
-						<span className="self-start rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
-							Reviewing scoped subset
-						</span>
-					)}
-					<span className="text-xs uppercase tracking-wide text-muted">
-						{current.fm.topic}
-						{current.fm.section && ` · ${current.fm.section}`}
-						{` · due ${current.fm.fsrs_due}`}
-						{` · ${current.fm.fsrs_state}`}
-					</span>
-				</div>
+		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
+			<header className="flex items-center justify-between gap-2">
+				<h2 className="text-base font-semibold">Review</h2>
 				<ViewSwitcher active="review" variant="compact" />
 			</header>
 
@@ -131,8 +124,23 @@ export function ReviewPane() {
 				)}
 			</div>
 
-			<footer className="text-xs text-muted">
-				{doneCount} done · {due.length} due · {newCount} new
+			<footer className="flex flex-col gap-1 pt-2 text-xs text-muted">
+				<div className="flex flex-wrap items-center gap-2">
+					{reviewScope !== null && (
+						<span className="rounded bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-fg">
+							Reviewing scoped subset
+						</span>
+					)}
+					<span className="uppercase tracking-wide">
+						{current.fm.topic}
+						{current.fm.section && ` · ${current.fm.section}`}
+						{` · due ${current.fm.fsrs_due}`}
+						{` · ${current.fm.fsrs_state}`}
+					</span>
+				</div>
+				<span>
+					{doneCount} done · {due.length} due · {newCount} new
+				</span>
 			</footer>
 		</div>
 	);

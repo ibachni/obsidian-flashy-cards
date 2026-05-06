@@ -19,7 +19,7 @@ export function CardRow({ card, onClick }: Props) {
 		<li>
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 rounded bg-transparent! border-none! shadow-none! px-2 py-1.5 text-left text-fg! transition-colors hover:bg-subtle!"
+				className="ls-card-row flex w-full items-center gap-2 rounded bg-transparent! border-none! shadow-none! px-2 py-1.5 text-left text-fg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
 				onClick={(e) => onClick(card.path, e)}
 			>
 				<span className="flex-1 truncate text-sm">{slug}</span>

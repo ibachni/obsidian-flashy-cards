@@ -126,10 +126,10 @@ export function BrowsePane() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 p-6">
+		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
 			<header className="flex items-center justify-between gap-2">
 				<h2 className="text-base font-semibold">Browse</h2>
-				<ViewSwitcher active="browse" />
+				<ViewSwitcher active="browse" variant="compact" />
 			</header>
 
 			<TopicTable

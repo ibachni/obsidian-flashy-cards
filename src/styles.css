@@ -22,15 +22,16 @@
  */
 .learning-system-root {
 	--ls-bg: 250 245 235;        /* cream */
-	--ls-fg: 36 30 22;           /* warm ink — temperature-matched to bg */
+	--ls-fg: 8 5 0;              /* near-black warm ink — sharper than the
+	                                earlier 36/30/22, which sat too light on
+	                                cream and bled visually on small text */
 	--ls-accent: 92 78 188;      /* refined indigo */
 	--ls-muted: 120 110 100;
-	/* Elevated surface — used for popovers/dropdowns. Must lift
-	   *clearly* above --ls-bg so transparent items don't read as a
-	   missing background. A subtle warm offset isn't enough on cream
-	   paper; we go to near-white and let the border + shadow keep the
-	   popover from feeling clinical. */
-	--ls-elevated: 255 254 250;
+	/* Elevated surface — popovers/dropdowns. Match --ls-bg so the
+	   surface reads as continuous with the page; border + shadow do
+	   the lift. Earlier separate values (near-white or warm-cream
+	   well) read as washed-out or visually noisy on this palette. */
+	--ls-elevated: 250 245 235;
 	/* Hairline divisions — much lighter than --ls-muted, which is
 	   text-tier. Use border-border / divide-border / etc. anywhere a
 	   visual rule is needed. */
@@ -60,7 +61,7 @@
 	--ls-muted: 138 138 147;     /* hint-tier secondary text */
 	--ls-elevated: 36 36 40;     /* popovers — Linear card lift */
 	--ls-border: 56 56 62;       /* visible-but-recessive hairlines */
-	--ls-subtle: 33 33 37;       /* hover surface — minimal lift */
+	--ls-subtle: 44 44 49;       /* hover surface — clear-but-quiet lift */
 
 	--ls-state-new: 130 170 240;
 	--ls-state-learning: 230 180 90;
@@ -137,4 +138,117 @@
 .ls-setting-error:empty {
 	display: none;
 	margin: 0;
+}
+
+/*
+ * Scoped chrome reset.
+ *
+ * Obsidian ships unlayered defaults for <button>, <input>, <select>,
+ * <textarea>, <table> etc. (background, border, padding, color, …).
+ * Tailwind utilities live in `@layer utilities`. CSS cascade rule:
+ * for normal declarations, unlayered styles beat layered styles even
+ * when the layered selector has higher specificity. That's why every
+ * Tailwind utility we use on a button needs `!important` (`!` suffix)
+ * to win — `!important` flips the layer ordering.
+ *
+ * This block clears the chrome at element-level specificity (0,0,1)
+ * inside our panes, using `:where()` on the wrapper so the wrapper
+ * itself contributes 0. Any class-level utility (0,1,0) then beats
+ * this reset naturally — no `!important` needed.
+ *
+ * Result: `<button className="bg-fg text-bg border border-border">`
+ * works without a single `!`. New components should drop the `!`
+ * suffix; existing ones can be cleaned up incrementally.
+ */
+:where(.learning-system-pane, .learning-system-root) button,
+:where(.learning-system-pane, .learning-system-root) input,
+:where(.learning-system-pane, .learning-system-root) select,
+:where(.learning-system-pane, .learning-system-root) textarea {
+	background-color: transparent;
+	border: 0;
+	box-shadow: none;
+	padding: 0;
+	border-radius: 0;
+	color: inherit;
+	font: inherit;
+	line-height: inherit;
+}
+
+/*
+ * Browse-view hover highlights.
+ *
+ * These rules MUST live inside `@layer utilities` (the same layer
+ * Tailwind compiles into). The card button carries `bg-transparent!`
+ * and the dropdown items carry `bg-elevated!`, both of which are
+ * `!important` declarations inside `@layer utilities`. For !important
+ * declarations, the cascade is reversed: layered styles win over
+ * unlayered, regardless of selector specificity. Putting these rules
+ * outside any layer silently lost to Tailwind's own utilities.
+ *
+ * Inside the same layer, specificity decides — `.learning-system-pane
+ * .ls-card-row:hover` (0,2,1) beats `.bg-transparent\!` (0,1,0).
+ *
+ * The topic-table rules paint on <td> rather than <tr> because
+ * Obsidian's `tr:hover td` rule paints a cell background that
+ * otherwise sits on top of any tr-level lift.
+ */
+@layer utilities {
+	/* Topic table — neutral hover, accent-tinted selection,
+	   accent-stronger hover-on-selection. */
+	.learning-system-pane .ls-topic-row {
+		cursor: pointer;
+		transition: background-color 150ms ease;
+	}
+	.learning-system-pane .ls-topic-row:hover > td {
+		background-color: rgb(var(--ls-subtle)) !important;
+	}
+	.learning-system-pane .ls-topic-row.is-selected > td {
+		background-color: color-mix(
+			in srgb,
+			rgb(var(--ls-accent)) 12%,
+			transparent
+		) !important;
+	}
+	.learning-system-pane .ls-topic-row.is-selected:hover > td {
+		background-color: color-mix(
+			in srgb,
+			rgb(var(--ls-accent)) 22%,
+			transparent
+		) !important;
+	}
+
+	/* Card list — same neutral lift as the topic table for consistency. */
+	.learning-system-pane .ls-card-row {
+		transition: background-color 150ms ease;
+	}
+	.learning-system-pane .ls-card-row:hover {
+		background-color: rgb(var(--ls-subtle)) !important;
+	}
+
+	/* Tag dropdown items — accent-tinted lift. The dropdown is portaled
+	   to document.body, so a `.learning-system-pane` ancestor selector
+	   wouldn't match. The portaled root carries `learning-system-root`
+	   which provides the CSS variables. The `.ls-tag-option` class is
+	   unique enough to not need an ancestor scope. */
+	.ls-tag-option {
+		transition: background-color 150ms ease;
+	}
+	.ls-tag-option.is-highlighted,
+	.ls-tag-option:hover {
+		background-color: color-mix(
+			in srgb,
+			rgb(var(--ls-accent)) 18%,
+			transparent
+		) !important;
+	}
+	/* Defensive text color. `text-fg!` (`color: var(--color-fg) !important`)
+	   should already win, but the user reported the dropdown text reading
+	   as light despite multiple --ls-fg bumps. Either some Obsidian rule
+	   is winning the cascade with higher specificity, or var(--color-fg)
+	   is resolving to invalid for portaled elements. This rule has higher
+	   specificity (0,2,0) than `.text-fg\!` (0,1,0) and uses --ls-fg
+	   directly (single var hop) so the cascade can't go sideways. */
+	.learning-system-root .ls-tag-option {
+		color: rgb(var(--ls-fg)) !important;
+	}
 }

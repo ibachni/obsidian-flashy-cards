@@ -165,7 +165,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 				<button
 					ref={chevronRef}
 					type="button"
-					className="shrink-0 rounded bg-transparent! border-none! shadow-none! p-1 text-fg! transition-colors hover:bg-subtle!"
+					className="shrink-0 rounded border border-border p-1 text-fg transition-colors hover:bg-subtle"
 					onClick={(e) => {
 						// stopPropagation: the trigger <div> has its own
 						// onClick that refocuses the input ("click row → focus
@@ -211,7 +211,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 							// Inline RGB has no resolution chain to fail.
 							backgroundColor: isDark
 								? "rgb(36, 36, 40)"
-								: "rgb(255, 254, 250)",
+								: "rgb(250, 245, 235)",
 						}}
 						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-[180px] max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
 					>
@@ -235,10 +235,8 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 									<li key={tag}>
 										<button
 											type="button"
-											className={`flex w-full items-center gap-3 bg-elevated! border-none! shadow-none! px-3 py-1.5 text-left text-sm text-fg! transition-colors ${
-												i === highlighted
-													? "bg-accent/15!"
-													: "hover:bg-subtle!"
+											className={`ls-tag-option flex w-full items-center gap-3 bg-elevated! border-none! shadow-none! px-3 py-1.5 text-left text-sm text-fg!${
+												i === highlighted ? " is-highlighted" : ""
 											}`}
 											onMouseEnter={() => setHighlighted(i)}
 											onClick={() => toggle(tag)}
