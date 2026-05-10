@@ -37,7 +37,7 @@ export function ViewSwitcher({ active, variant = "full" }: Props) {
 		return (
 			<button
 				type="button"
-				className="bg-transparent! border-none! shadow-none! px-0! text-xs text-muted! transition-colors hover:text-fg!"
+				className="ls-flat px-0! text-xs text-muted! transition-colors hover:text-fg!"
 				onClick={onClick}
 			>
 				{label}
@@ -72,10 +72,9 @@ function SegmentButton({
 }) {
 	// Minimalist text-link style — matches the compact variant used in
 	// the Review header. Active = full ink + medium weight; inactive =
-	// muted with a hover lift to fg. No bg, no border, no shadow — the
-	// flatten classes cancel Obsidian's default button chrome.
-	const base =
-		"bg-transparent! border-none! shadow-none! px-0! text-xs transition-colors";
+	// muted with a hover lift to fg. `.ls-flat` neutralizes Obsidian's
+	// default button chrome (bg/border/shadow) in one class.
+	const base = "ls-flat px-0! text-xs transition-colors";
 	const styles = isActive
 		? "text-fg! font-medium! cursor-default"
 		: "text-muted! hover:text-fg!";

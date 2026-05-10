@@ -55,13 +55,13 @@
 	   undertone, soft warm-white text, recessive hairlines, and Linear's
 	   signature violet (adapted lighter for dark-mode legibility) as
 	   the only chromatic accent. */
-	--ls-bg: 28 28 31;           /* page bg — lifted ~10% off black */
+	--ls-bg: 38 38 42;           /* page bg — charcoal, distinctly off-black */
 	--ls-fg: 233 233 236;        /* soft warm-white, not stark */
 	--ls-accent: 124 132 247;    /* Linear violet, adapted lighter */
 	--ls-muted: 138 138 147;     /* hint-tier secondary text */
-	--ls-elevated: 36 36 40;     /* popovers — Linear card lift */
-	--ls-border: 56 56 62;       /* visible-but-recessive hairlines */
-	--ls-subtle: 44 44 49;       /* hover surface — clear-but-quiet lift */
+	--ls-elevated: 38 38 42;     /* popovers — match --ls-bg, border + shadow do the lift */
+	--ls-border: 64 64 70;       /* visible-but-recessive hairlines, lifted to match new bg */
+	--ls-subtle: 52 52 58;       /* hover surface — clear-but-quiet lift over new bg */
 
 	--ls-state-new: 130 170 240;
 	--ls-state-learning: 230 180 90;
@@ -141,38 +141,33 @@
 }
 
 /*
- * Scoped chrome reset.
+ * Why `!` (Tailwind `!important`) keeps showing up in className strings.
  *
- * Obsidian ships unlayered defaults for <button>, <input>, <select>,
- * <textarea>, <table> etc. (background, border, padding, color, …).
- * Tailwind utilities live in `@layer utilities`. CSS cascade rule:
- * for normal declarations, unlayered styles beat layered styles even
- * when the layered selector has higher specificity. That's why every
- * Tailwind utility we use on a button needs `!important` (`!` suffix)
- * to win — `!important` flips the layer ordering.
+ * We deliberately skip Tailwind's preflight (it would touch every
+ * element in Obsidian's UI). Without preflight, Obsidian's unlayered
+ * defaults for <button>, <input>, <table>, <tr>, <td>, etc. stay in
+ * play (background, border, padding, color, …).
  *
- * This block clears the chrome at element-level specificity (0,0,1)
- * inside our panes, using `:where()` on the wrapper so the wrapper
- * itself contributes 0. Any class-level utility (0,1,0) then beats
- * this reset naturally — no `!important` needed.
+ * Tailwind utilities live in `@layer utilities`. The CSS cascade rule
+ * that bites us: for *normal* declarations, **unlayered styles beat
+ * layered styles regardless of specificity**. So Obsidian's plain
+ * `button { background: var(--interactive-normal) }` (unlayered)
+ * wins over Tailwind's `.bg-transparent` (layered) even though the
+ * class selector is more specific.
  *
- * Result: `<button className="bg-fg text-bg border border-border">`
- * works without a single `!`. New components should drop the `!`
- * suffix; existing ones can be cleaned up incrementally.
+ * The fix is `!important` — for `!important` declarations the layer
+ * order *reverses*, so layered `!important` beats unlayered normal.
+ * That's why we write `bg-transparent!`, `border-none!`, `text-fg!`
+ * on every button/input that overrides Obsidian's chrome.
+ *
+ * A scoped reset doesn't help: any unlayered reset that's strong
+ * enough to beat Obsidian also beats Tailwind utilities, so we'd be
+ * back to needing `!` to override our own reset. The only real escape
+ * is loading Tailwind's full preflight, which we can't.
+ *
+ * Bottom line: `!` is load-bearing on buttons/inputs/tables. Don't
+ * remove it without a visual smoke-test in Obsidian.
  */
-:where(.learning-system-pane, .learning-system-root) button,
-:where(.learning-system-pane, .learning-system-root) input,
-:where(.learning-system-pane, .learning-system-root) select,
-:where(.learning-system-pane, .learning-system-root) textarea {
-	background-color: transparent;
-	border: 0;
-	box-shadow: none;
-	padding: 0;
-	border-radius: 0;
-	color: inherit;
-	font: inherit;
-	line-height: inherit;
-}
 
 /*
  * Browse-view hover highlights.
@@ -229,8 +224,14 @@
 	   to document.body, so a `.learning-system-pane` ancestor selector
 	   wouldn't match. The portaled root carries `learning-system-root`
 	   which provides the CSS variables. The `.ls-tag-option` class is
-	   unique enough to not need an ancestor scope. */
+	   unique enough to not need an ancestor scope.
+
+	   Chrome reset is baked in (background/border/shadow) so the JSX
+	   doesn't need `bg-elevated! border-none! shadow-none!`. */
 	.ls-tag-option {
+		background-color: rgb(var(--ls-elevated)) !important;
+		border: 0 !important;
+		box-shadow: none !important;
 		transition: background-color 150ms ease;
 	}
 	.ls-tag-option.is-highlighted,
@@ -250,5 +251,58 @@
 	   directly (single var hop) so the cascade can't go sideways. */
 	.learning-system-root .ls-tag-option {
 		color: rgb(var(--ls-fg)) !important;
+	}
+
+	/*
+	 * Named component classes — consolidate the recurring `!`-heavy
+	 * combos (`bg-transparent! border-none! shadow-none!`, etc.) so
+	 * JSX className strings stay readable.
+	 *
+	 * All inside `@layer utilities` and declared after the imported
+	 * utilities, so within the same layer + same specificity (0,1,0)
+	 * + same `!important`, source order makes these win over plain
+	 * Tailwind utilities. That means a component using `ls-btn-primary`
+	 * can't override the bg with a downstream `bg-transparent!` — the
+	 * class is atomic by design. Pick the right class; don't layer
+	 * Tailwind on top.
+	 */
+
+	/* Cancel Obsidian's default button/input/select chrome. Use this
+	   on any interactive element that should look "unstyled" so plain
+	   Tailwind classes (text/padding/typography) can build it up. */
+	.ls-flat {
+		background-color: transparent !important;
+		border: 0 !important;
+		box-shadow: none !important;
+	}
+
+	/* Primary action button — filled ink-on-paper. */
+	.ls-btn-primary {
+		background-color: rgb(var(--ls-fg)) !important;
+		color: rgb(var(--ls-bg)) !important;
+		border: 0 !important;
+		transition: opacity 150ms ease;
+	}
+	.ls-btn-primary:hover {
+		opacity: 0.9;
+	}
+	.ls-btn-primary:disabled {
+		opacity: 0.4 !important;
+		cursor: not-allowed !important;
+	}
+
+	/* Secondary action — bordered ghost, fills on hover. */
+	.ls-btn-outline {
+		background-color: transparent !important;
+		border: 1px solid rgb(var(--ls-border)) !important;
+		color: rgb(var(--ls-fg)) !important;
+		box-shadow: none !important;
+		transition:
+			background-color 150ms ease,
+			color 150ms ease;
+	}
+	.ls-btn-outline:hover {
+		background-color: rgb(var(--ls-fg)) !important;
+		color: rgb(var(--ls-bg)) !important;
 	}
 }

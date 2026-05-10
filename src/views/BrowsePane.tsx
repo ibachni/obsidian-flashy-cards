@@ -145,7 +145,7 @@ export function BrowsePane() {
 					onChange={setSelectedTags}
 				/>
 				<select
-					className="bg-transparent! px-2 py-1 text-sm text-fg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+					className="ls-flat px-2 py-1 text-sm text-fg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
 					value={status}
 					onChange={(e) => setStatus(e.target.value as StatusFilter)}
 				>
@@ -160,7 +160,7 @@ export function BrowsePane() {
 			{filtersActive && (
 				<button
 					type="button"
-					className="self-start bg-transparent! text-xs text-muted! underline transition-colors hover:text-fg!"
+					className="ls-flat self-start text-xs text-muted! underline transition-colors hover:text-fg!"
 					onClick={clearAll}
 				>
 					Clear all filters
@@ -187,7 +187,7 @@ export function BrowsePane() {
 				<button
 					type="button"
 					disabled={filtered.length === 0}
-					className="inline-flex items-center justify-center rounded-md bg-fg! px-3 py-1.5 text-sm font-medium text-bg! shadow-sm transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+					className="ls-btn-primary inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
 					onClick={startScopedReview}
 				>
 					Test this section

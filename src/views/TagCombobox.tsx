@@ -165,7 +165,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 				<button
 					ref={chevronRef}
 					type="button"
-					className="shrink-0 rounded border border-border p-1 text-fg transition-colors hover:bg-subtle"
+					className="shrink-0 rounded border! border-border! bg-transparent! shadow-none! p-1! text-fg! transition-colors hover:bg-subtle!"
 					onClick={(e) => {
 						// stopPropagation: the trigger <div> has its own
 						// onClick that refocuses the input ("click row → focus
@@ -210,7 +210,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 							// transparent panel that exposed cards behind.
 							// Inline RGB has no resolution chain to fail.
 							backgroundColor: isDark
-								? "rgb(36, 36, 40)"
+								? "rgb(38, 38, 42)"
 								: "rgb(250, 245, 235)",
 						}}
 						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-[180px] max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
@@ -218,7 +218,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 						<div className="sticky top-0 z-10 flex items-center justify-end bg-elevated! px-1 py-0.5">
 							<button
 								type="button"
-								className="rounded bg-transparent! border-none! shadow-none! p-1 text-muted! transition-colors hover:bg-subtle! hover:text-fg!"
+								className="ls-flat rounded p-1 text-muted! transition-colors hover:bg-subtle! hover:text-fg!"
 								onClick={() => setOpen(false)}
 								aria-label="Close suggestions"
 							>
@@ -235,7 +235,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 									<li key={tag}>
 										<button
 											type="button"
-											className={`ls-tag-option flex w-full items-center gap-3 bg-elevated! border-none! shadow-none! px-3 py-1.5 text-left text-sm text-fg!${
+											className={`ls-tag-option flex w-full items-center gap-3 px-3 py-1.5 text-left text-sm${
 												i === highlighted ? " is-highlighted" : ""
 											}`}
 											onMouseEnter={() => setHighlighted(i)}

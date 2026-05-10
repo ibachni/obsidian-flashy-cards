@@ -109,7 +109,7 @@ export function ReviewPane() {
 				{!revealed ? (
 					<button
 						type="button"
-						className="inline-flex items-center justify-center rounded-md bg-fg! px-4 py-2 text-sm font-medium text-bg! shadow-sm transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+						className="ls-btn-primary inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
 						onClick={() => setRevealed(true)}
 					>
 						Show answer
@@ -158,7 +158,7 @@ function GradeButton({
 	return (
 		<button
 			type="button"
-			className="inline-flex items-center justify-center rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-fg! shadow-sm transition-colors hover:bg-fg! hover:text-bg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+			className="ls-btn-outline inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
 			onClick={() => void onClick(rating)}
 		>
 			{label}
