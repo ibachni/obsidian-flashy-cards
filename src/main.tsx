@@ -24,11 +24,13 @@ import {
 	type Grade,
 } from "./srs/fsrs-engine";
 import { BrowsePane } from "./views/BrowsePane";
+import { NewCardPane } from "./views/NewCardPane";
 import { PluginContextProvider } from "./views/PluginContext";
 import { ReviewPane } from "./views/ReviewPane";
 
 export const VIEW_TYPE_LEARNING = "learning-system-view";
 export const VIEW_TYPE_BROWSE = "learning-system-browse-view";
+export const VIEW_TYPE_NEW_CARD = "learning-system-new-card-view";
 
 type ThemeMode = "cream" | "dark" | "system";
 
@@ -127,6 +129,49 @@ class LearningSystemBrowseView extends ItemView {
 				value={{ app: this.app, plugin: this.plugin, view: this }}
 			>
 				<BrowsePane />
+			</PluginContextProvider>,
+		);
+	}
+
+	async onClose(): Promise<void> {
+		this.root?.unmount();
+		this.root = null;
+	}
+}
+
+class LearningSystemNewCardView extends ItemView {
+	private root: Root | null = null;
+	plugin: LearningSystemPlugin;
+
+	constructor(leaf: WorkspaceLeaf, plugin: LearningSystemPlugin) {
+		super(leaf);
+		this.plugin = plugin;
+	}
+
+	getViewType(): string {
+		return VIEW_TYPE_NEW_CARD;
+	}
+
+	getDisplayText(): string {
+		return "Learning New Card";
+	}
+
+	getIcon(): string {
+		return "plus-circle";
+	}
+
+	async onOpen(): Promise<void> {
+		this.contentEl.empty();
+		this.contentEl.addClass("learning-system-root");
+		this.contentEl.addClass("learning-system-pane");
+
+		const mountEl = this.contentEl.createDiv();
+		this.root = createRoot(mountEl);
+		this.root.render(
+			<PluginContextProvider
+				value={{ app: this.app, plugin: this.plugin, view: this }}
+			>
+				<NewCardPane />
 			</PluginContextProvider>,
 		);
 	}
@@ -334,6 +379,10 @@ export default class LearningSystemPlugin extends Plugin {
 			VIEW_TYPE_BROWSE,
 			(leaf) => new LearningSystemBrowseView(leaf, this),
 		);
+		this.registerView(
+			VIEW_TYPE_NEW_CARD,
+			(leaf) => new LearningSystemNewCardView(leaf, this),
+		);
 
 		this.addRibbonIcon("brain", "Learning System", () => {
 			void this.activateView();
@@ -341,11 +390,20 @@ export default class LearningSystemPlugin extends Plugin {
 		this.addRibbonIcon("library", "Learning System: Browse", () => {
 			void this.activateBrowseView();
 		});
+		this.addRibbonIcon("plus-circle", "Learning System: New card", () => {
+			void this.activateNewCardView();
+		});
 
 		this.addCommand({
 			id: "open-browse",
 			name: "Open Browse view",
 			callback: () => void this.activateBrowseView(),
+		});
+
+		this.addCommand({
+			id: "new-card",
+			name: "New card",
+			callback: () => void this.activateNewCardView(),
 		});
 
 		this.addCommand({
@@ -379,6 +437,9 @@ export default class LearningSystemPlugin extends Plugin {
 				!!this.app.workspace.getActiveViewOfType(LearningSystemView) ||
 				!!this.app.workspace.getActiveViewOfType(
 					LearningSystemBrowseView,
+				) ||
+				!!this.app.workspace.getActiveViewOfType(
+					LearningSystemNewCardView,
 				);
 			if (!inPane && !activeIsOurs) return;
 			e.preventDefault();
@@ -517,7 +578,7 @@ export default class LearningSystemPlugin extends Plugin {
 			(this.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
 
-		const types = [VIEW_TYPE_LEARNING, VIEW_TYPE_BROWSE];
+		const types = [VIEW_TYPE_LEARNING, VIEW_TYPE_BROWSE, VIEW_TYPE_NEW_CARD];
 		for (const type of types) {
 			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
 				if (leaf.view instanceof ItemView) {
@@ -584,6 +645,24 @@ export default class LearningSystemPlugin extends Plugin {
 		if (!leaf) return;
 
 		await leaf.setViewState({ type: VIEW_TYPE_BROWSE, active: true });
+		void workspace.revealLeaf(leaf);
+		this.applyTheme();
+	}
+
+	async activateNewCardView(): Promise<void> {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(VIEW_TYPE_NEW_CARD)[0];
+
+		if (existing) {
+			void workspace.revealLeaf(existing);
+			this.applyTheme();
+			return;
+		}
+
+		const leaf = workspace.getRightLeaf(false);
+		if (!leaf) return;
+
+		await leaf.setViewState({ type: VIEW_TYPE_NEW_CARD, active: true });
 		void workspace.revealLeaf(leaf);
 		this.applyTheme();
 	}

@@ -12,6 +12,23 @@ interface Props {
 	allTags: string[];
 	selected: Set<string>;
 	onChange: (next: Set<string>) => void;
+	placeholder?: string;
+	/**
+	 * When true, a `Create "<query>"` row appears at the bottom of the
+	 * dropdown whenever the trimmed query doesn't match any existing or
+	 * already-selected tag (case-insensitive). Selecting it adds the
+	 * trimmed query verbatim to the selection. Default false preserves
+	 * the Browse pane's filter-only behavior.
+	 */
+	allowCreate?: boolean;
+	/**
+	 * When true, drops the trigger row's horizontal padding so the
+	 * input's border aligns with the parent's content edge rather than
+	 * sitting 8px inset. Used by the new-card pane where surrounding
+	 * fields paint their border at the content edge; Browse leaves this
+	 * unset for the original visual.
+	 */
+	compact?: boolean;
 }
 
 
@@ -28,10 +45,18 @@ interface Props {
  *  - Type to filter the dropdown.
  *  - ArrowDown/Up moves the highlighted suggestion (wraps).
  *  - Enter toggles the highlighted tag in the selection (panel stays open).
+ *    With `allowCreate`, Enter on the Create row adds the trimmed query.
  *  - Escape closes the panel and returns focus to the input.
  *  - Backspace on empty input removes the last selected chip.
  */
-export function TagCombobox({ allTags, selected, onChange }: Props) {
+export function TagCombobox({
+	allTags,
+	selected,
+	onChange,
+	placeholder = "Filter by tag…",
+	allowCreate = false,
+	compact = false,
+}: Props) {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
 	const [highlighted, setHighlighted] = useState(0);
@@ -54,12 +79,27 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 		return allTags.filter((t) => t.toLowerCase().includes(q));
 	}, [allTags, query]);
 
-	// Clamp highlighted into the filtered range whenever the list shrinks.
+	const trimmedQuery = query.trim();
+	// The Create row appears when allowCreate is on and the trimmed query
+	// is non-empty and doesn't match (case-insensitively) any tag the user
+	// already knows about — including ones they've just created this
+	// session, which live in `selected` but may not be in `allTags` yet.
+	const showCreateRow = useMemo(() => {
+		if (!allowCreate || trimmedQuery.length === 0) return false;
+		const lower = trimmedQuery.toLowerCase();
+		for (const t of allTags) if (t.toLowerCase() === lower) return false;
+		for (const t of selected) if (t.toLowerCase() === lower) return false;
+		return true;
+	}, [allowCreate, trimmedQuery, allTags, selected]);
+
+	const totalItems = filtered.length + (showCreateRow ? 1 : 0);
+
+	// Clamp highlighted into the visible range whenever the list shrinks.
 	useEffect(() => {
-		if (highlighted >= filtered.length) {
+		if (highlighted >= totalItems) {
 			setHighlighted(0);
 		}
-	}, [filtered.length, highlighted]);
+	}, [totalItems, highlighted]);
 
 	// Position the portal panel under the chevron and snapshot the
 	// current theme. Portaled elements are outside .learning-system-root,
@@ -100,6 +140,17 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 		onChange(next);
 	};
 
+	const createTag = (tag: string) => {
+		const next = new Set(selected);
+		next.add(tag);
+		onChange(next);
+		// Clear so the next keystroke is a fresh query and the dropdown
+		// resets to the full tag list. Reset highlight so it can't be
+		// pointing past the (now larger) item list.
+		setQuery("");
+		setHighlighted(0);
+	};
+
 	const removeChip = (tag: string) => {
 		const next = new Set(selected);
 		next.delete(tag);
@@ -111,23 +162,23 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 			e.preventDefault();
 			setOpen(true);
 			setHighlighted((h) =>
-				filtered.length === 0 ? 0 : (h + 1) % filtered.length,
+				totalItems === 0 ? 0 : (h + 1) % totalItems,
 			);
 		} else if (e.key === "ArrowUp") {
 			e.preventDefault();
 			setOpen(true);
 			setHighlighted((h) =>
-				filtered.length === 0
-					? 0
-					: (h - 1 + filtered.length) % filtered.length,
+				totalItems === 0 ? 0 : (h - 1 + totalItems) % totalItems,
 			);
 		} else if (e.key === "Enter") {
 			e.preventDefault();
-			if (open && filtered.length > 0) {
+			if (!open) {
+				setOpen(true);
+			} else if (showCreateRow && highlighted === filtered.length) {
+				createTag(trimmedQuery);
+			} else if (filtered.length > 0 && highlighted < filtered.length) {
 				const tag = filtered[highlighted];
 				if (tag !== undefined) toggle(tag);
-			} else {
-				setOpen(true);
 			}
 		} else if (e.key === "Escape") {
 			e.preventDefault();
@@ -146,14 +197,14 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 		<>
 			<div
 				ref={triggerRef}
-				className="flex items-center gap-1 px-2 py-1"
+				className={`flex items-center gap-1 py-1${compact ? "" : " px-2"}`}
 				onClick={() => inputRef.current?.focus()}
 			>
 				<input
 					ref={inputRef}
 					type="text"
 					className="min-w-[6rem] flex-1 bg-transparent! text-sm text-fg! outline-none"
-					placeholder="Filter by tag…"
+					placeholder={placeholder}
 					value={query}
 					onChange={(e) => {
 						setQuery(e.target.value);
@@ -225,7 +276,7 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 								<CloseIcon />
 							</button>
 						</div>
-						{filtered.length === 0 ? (
+						{totalItems === 0 ? (
 							<div className="px-3 py-2 text-sm text-muted">
 								No tags found.
 							</div>
@@ -250,6 +301,24 @@ export function TagCombobox({ allTags, selected, onChange }: Props) {
 										</button>
 									</li>
 								))}
+								{showCreateRow && (
+									<li>
+										<button
+											type="button"
+											className={`ls-tag-option flex w-full items-center gap-3 px-3 py-1.5 text-left text-sm${
+												highlighted === filtered.length
+													? " is-highlighted"
+													: ""
+											}`}
+											onMouseEnter={() => setHighlighted(filtered.length)}
+											onClick={() => createTag(trimmedQuery)}
+										>
+											<span className="flex-1 text-muted">
+												Create "<span className="text-fg">{trimmedQuery}</span>"
+											</span>
+										</button>
+									</li>
+								)}
 							</ul>
 						)}
 					</div>,
