@@ -46,7 +46,7 @@ export const MarkdownField = forwardRef<MarkdownFieldHandle, Props>(
 
 		return (
 			<div className="flex flex-col gap-1">
-				<span className="text-xs font-medium text-muted!">
+				<span className="text-sm font-medium text-muted!">
 					{label}
 					{optional && <span className="text-muted!"> (optional)</span>}
 				</span>
