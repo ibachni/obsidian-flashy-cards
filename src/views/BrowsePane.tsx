@@ -10,7 +10,6 @@ import { endOfTodayDate, parseDueDate } from "./date-utils";
 import { usePluginContext } from "./PluginContext";
 import { TagCombobox } from "./TagCombobox";
 import { TopicTable, type TopicRow } from "./TopicTable";
-import { ViewSwitcher } from "./ViewSwitcher";
 
 type StatusFilter = "all" | "new" | "learning" | "review" | "due-today";
 
@@ -22,8 +21,16 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 	{ value: "review", label: "Review" },
 ];
 
-export function BrowsePane() {
-	const { app, plugin } = usePluginContext();
+interface Props {
+	/**
+	 * Called by "Test this section" after the review scope is set, so
+	 * the parent (UnifiedPane) can switch to Review mode in place.
+	 */
+	onSwitchToReview: () => void;
+}
+
+export function BrowsePane({ onSwitchToReview }: Props) {
+	const { app } = usePluginContext();
 	const cardsByPath = useCardStore((s) => s.cardsByPath);
 	const setReviewScope = useCardStore((s) => s.setReviewScope);
 
@@ -122,16 +129,11 @@ export function BrowsePane() {
 	const startScopedReview = () => {
 		if (filtered.length === 0) return;
 		setReviewScope(filtered.map((c) => c.path));
-		void plugin.activateView();
+		onSwitchToReview();
 	};
 
 	return (
-		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-			<header className="flex items-center justify-between gap-2">
-				<h2 className="text-base font-semibold">Browse</h2>
-				<ViewSwitcher active="browse" variant="compact" />
-			</header>
-
+		<div className="flex flex-col gap-4">
 			<TopicTable
 				rows={topicRows}
 				selected={selectedTopics}

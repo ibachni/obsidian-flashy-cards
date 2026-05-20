@@ -6,7 +6,6 @@ import { Rating, type Grade } from "../srs/fsrs-engine";
 import { formatDelta, parseDueDate } from "./date-utils";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { usePluginContext } from "./PluginContext";
-import { ViewSwitcher } from "./ViewSwitcher";
 
 export function ReviewPane() {
 	const { plugin } = usePluginContext();
@@ -36,12 +35,7 @@ export function ReviewPane() {
 		// next time the user opens Review it iterates over the full deck.
 		if (scopeWasActive) clearReviewScope();
 		return (
-			<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-				<header className="flex items-center justify-between gap-2">
-					<h2 className="text-base font-semibold">Review</h2>
-					<ViewSwitcher active="review" variant="compact" />
-				</header>
-
+			<div className="flex flex-col gap-4">
 				<p className="text-sm text-muted">
 					No cards due
 					{next && <> · next in {formatDelta(next, now)}</>}.
@@ -80,12 +74,7 @@ export function ReviewPane() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-			<header className="flex items-center justify-between gap-2">
-				<h2 className="text-base font-semibold">Review</h2>
-				<ViewSwitcher active="review" variant="compact" />
-			</header>
-
+		<div className="flex flex-col gap-4">
 			<section>
 				<h3 className="mb-2 text-xs uppercase tracking-wide text-muted">
 					Question

@@ -8,6 +8,7 @@ import {
 	TFile,
 	TFolder,
 	WorkspaceLeaf,
+	type ViewStateResult,
 } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -23,14 +24,18 @@ import {
 	type FSRS,
 	type Grade,
 } from "./srs/fsrs-engine";
-import { BrowsePane } from "./views/BrowsePane";
-import { NewCardPane } from "./views/NewCardPane";
+import type { Mode } from "./views/ModeNav";
 import { PluginContextProvider } from "./views/PluginContext";
-import { ReviewPane } from "./views/ReviewPane";
+import { UnifiedPane } from "./views/UnifiedPane";
 
 export const VIEW_TYPE_LEARNING = "learning-system-view";
-export const VIEW_TYPE_BROWSE = "learning-system-browse-view";
-export const VIEW_TYPE_NEW_CARD = "learning-system-new-card-view";
+// String literals (not exported constants) — these refer to defunct view
+// types that may still appear in a pre-migration user's workspace layout.
+// Used once during onLayoutReady to detach stale leaves; see Phase 5.
+const STALE_VIEW_TYPES = [
+	"learning-system-browse-view",
+	"learning-system-new-card-view",
+] as const;
 
 type ThemeMode = "cream" | "dark" | "system";
 
@@ -50,9 +55,21 @@ const DEFAULT_SETTINGS: LearningSystemSettings = {
 	claudianHoldingFile: "_handoff_learning.md",
 };
 
+function parseModeFromState(state: unknown): Mode | null {
+	if (!state || typeof state !== "object") return null;
+	const m = (state as { mode?: unknown }).mode;
+	if (m === "review" || m === "browse" || m === "create") return m;
+	return null;
+}
+
 class LearningSystemView extends ItemView {
 	private root: Root | null = null;
 	plugin: LearningSystemPlugin;
+	// Active mode + which modes have ever been activated. Sticky-mount
+	// is owned here (not in React state) so workspace restore can hydrate
+	// both fields atomically before the React tree first renders.
+	private mode: Mode = "browse";
+	private mountedModes: Set<Mode> = new Set<Mode>(["browse"]);
 
 	constructor(leaf: WorkspaceLeaf, plugin: LearningSystemPlugin) {
 		super(leaf);
@@ -71,6 +88,51 @@ class LearningSystemView extends ItemView {
 		return "brain";
 	}
 
+	/**
+	 * Persist the active mode into the leaf's workspace state. Spread
+	 * `super.getState()` so we don't drop any base ItemView fields that
+	 * future Obsidian versions might add.
+	 */
+	getState(): Record<string, unknown> {
+		return { ...super.getState(), mode: this.mode };
+	}
+
+	/**
+	 * Called by Obsidian during workspace restore (with the persisted
+	 * `{ mode }`) and any time something programmatically updates the
+	 * leaf's view state. Ordering: Obsidian may invoke this before or
+	 * after `onOpen` depending on whether the leaf is being created or
+	 * restored — we commit the mode either way and `renderRoot` no-ops
+	 * when the React root hasn't been created yet. We await super first
+	 * so a rejected base call doesn't leave our local state ahead of
+	 * Obsidian's.
+	 */
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		await super.setState(state, result);
+		const next = parseModeFromState(state);
+		if (next && next !== this.mode) {
+			this.mode = next;
+			if (!this.mountedModes.has(next)) {
+				this.mountedModes = new Set([...this.mountedModes, next]);
+			}
+		}
+		this.renderRoot();
+	}
+
+	// Bound once so renderRoot passes a stable identity to React. Without
+	// this, every renderRoot call would hand <UnifiedPane> a fresh arrow
+	// and any future React.memo on ModeNav / its children would be moot.
+	setMode = (mode: Mode): void => {
+		if (mode === this.mode) return;
+		this.mode = mode;
+		if (!this.mountedModes.has(mode)) {
+			this.mountedModes = new Set([...this.mountedModes, mode]);
+		}
+		this.renderRoot();
+		// Debounced — Obsidian writes workspace.json once typing settles.
+		this.app.workspace.requestSaveLayout();
+	};
+
 	async onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass("learning-system-root");
@@ -81,104 +143,27 @@ class LearningSystemView extends ItemView {
 		// from contentEl into the React subtree.
 		const mountEl = this.contentEl.createDiv();
 		this.root = createRoot(mountEl);
-		this.root.render(
-			<PluginContextProvider
-				value={{ app: this.app, plugin: this.plugin, view: this }}
-			>
-				<ReviewPane />
-			</PluginContextProvider>,
-		);
+		this.renderRoot();
 	}
 
 	async onClose(): Promise<void> {
 		this.root?.unmount();
 		this.root = null;
 	}
-}
 
-class LearningSystemBrowseView extends ItemView {
-	private root: Root | null = null;
-	plugin: LearningSystemPlugin;
-
-	constructor(leaf: WorkspaceLeaf, plugin: LearningSystemPlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return VIEW_TYPE_BROWSE;
-	}
-
-	getDisplayText(): string {
-		return "Learning Browse";
-	}
-
-	getIcon(): string {
-		return "library";
-	}
-
-	async onOpen(): Promise<void> {
-		this.contentEl.empty();
-		this.contentEl.addClass("learning-system-root");
-		this.contentEl.addClass("learning-system-pane");
-
-		const mountEl = this.contentEl.createDiv();
-		this.root = createRoot(mountEl);
+	private renderRoot(): void {
+		if (!this.root) return;
 		this.root.render(
 			<PluginContextProvider
 				value={{ app: this.app, plugin: this.plugin, view: this }}
 			>
-				<BrowsePane />
+				<UnifiedPane
+					mode={this.mode}
+					mountedModes={this.mountedModes}
+					onSetMode={this.setMode}
+				/>
 			</PluginContextProvider>,
 		);
-	}
-
-	async onClose(): Promise<void> {
-		this.root?.unmount();
-		this.root = null;
-	}
-}
-
-class LearningSystemNewCardView extends ItemView {
-	private root: Root | null = null;
-	plugin: LearningSystemPlugin;
-
-	constructor(leaf: WorkspaceLeaf, plugin: LearningSystemPlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return VIEW_TYPE_NEW_CARD;
-	}
-
-	getDisplayText(): string {
-		return "Learning New Card";
-	}
-
-	getIcon(): string {
-		return "plus-circle";
-	}
-
-	async onOpen(): Promise<void> {
-		this.contentEl.empty();
-		this.contentEl.addClass("learning-system-root");
-		this.contentEl.addClass("learning-system-pane");
-
-		const mountEl = this.contentEl.createDiv();
-		this.root = createRoot(mountEl);
-		this.root.render(
-			<PluginContextProvider
-				value={{ app: this.app, plugin: this.plugin, view: this }}
-			>
-				<NewCardPane />
-			</PluginContextProvider>,
-		);
-	}
-
-	async onClose(): Promise<void> {
-		this.root?.unmount();
-		this.root = null;
 	}
 }
 
@@ -375,35 +360,36 @@ export default class LearningSystemPlugin extends Plugin {
 			VIEW_TYPE_LEARNING,
 			(leaf) => new LearningSystemView(leaf, this),
 		);
-		this.registerView(
-			VIEW_TYPE_BROWSE,
-			(leaf) => new LearningSystemBrowseView(leaf, this),
-		);
-		this.registerView(
-			VIEW_TYPE_NEW_CARD,
-			(leaf) => new LearningSystemNewCardView(leaf, this),
-		);
 
 		this.addRibbonIcon("brain", "Learning System", () => {
 			void this.activateView();
 		});
-		this.addRibbonIcon("library", "Learning System: Browse", () => {
-			void this.activateBrowseView();
-		});
-		this.addRibbonIcon("plus-circle", "Learning System: New card", () => {
-			void this.activateNewCardView();
+
+		this.addCommand({
+			id: "open-learning-system",
+			name: "Open learning system",
+			callback: () => void this.activateView(),
 		});
 
 		this.addCommand({
+			id: "open-review",
+			name: "Open review",
+			callback: () => void this.activateView({ mode: "review" }),
+		});
+
+		// Stable ID retained per AGENTS.md ("Use stable command IDs"). Name
+		// trimmed since "Browse view" no longer means a separate view —
+		// it's now a mode of the unified pane.
+		this.addCommand({
 			id: "open-browse",
-			name: "Open Browse view",
-			callback: () => void this.activateBrowseView(),
+			name: "Open browse",
+			callback: () => void this.activateView({ mode: "browse" }),
 		});
 
 		this.addCommand({
 			id: "new-card",
 			name: "New card",
-			callback: () => void this.activateNewCardView(),
+			callback: () => void this.activateView({ mode: "create" }),
 		});
 
 		this.addCommand({
@@ -433,14 +419,9 @@ export default class LearningSystemPlugin extends Plugin {
 				return;
 			}
 			const inPane = !!target?.closest?.(".learning-system-pane");
-			const activeIsOurs =
-				!!this.app.workspace.getActiveViewOfType(LearningSystemView) ||
-				!!this.app.workspace.getActiveViewOfType(
-					LearningSystemBrowseView,
-				) ||
-				!!this.app.workspace.getActiveViewOfType(
-					LearningSystemNewCardView,
-				);
+			const activeIsOurs = !!this.app.workspace.getActiveViewOfType(
+				LearningSystemView,
+			);
 			if (!inPane && !activeIsOurs) return;
 			e.preventDefault();
 			this.toggleTheme();
@@ -475,7 +456,29 @@ export default class LearningSystemPlugin extends Plugin {
 		// restored its leaves and the metadata cache has populated.
 		// onLayoutReady fires immediately if layout is already ready, so
 		// this also covers the toggle-off-then-on case.
+		//
+		// Also clean up leaves of the two pre-unification view types that
+		// may still be persisted in an existing user's workspace layout.
+		// We unregister those view types in this build, so without a
+		// detach pass Obsidian would render "No view of type X"
+		// placeholders. One-shot, idempotent, silent — no Notice.
 		this.app.workspace.onLayoutReady(() => {
+			for (const stale of STALE_VIEW_TYPES) {
+				for (const leaf of this.app.workspace.getLeavesOfType(stale)) {
+					// Defensive: a throw on one leaf shouldn't strand the
+					// rest. `detach()` is not documented to throw, but a
+					// future Obsidian change shouldn't be able to half-
+					// migrate the user's workspace.
+					try {
+						leaf.detach();
+					} catch (e) {
+						console.error(
+							`[learning-system] failed to detach stale leaf (${stale}):`,
+							e,
+						);
+					}
+				}
+			}
 			this.applyTheme();
 			void this.scanAndStoreCards();
 		});
@@ -578,12 +581,9 @@ export default class LearningSystemPlugin extends Plugin {
 			(this.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
 
-		const types = [VIEW_TYPE_LEARNING, VIEW_TYPE_BROWSE, VIEW_TYPE_NEW_CARD];
-		for (const type of types) {
-			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
-				if (leaf.view instanceof ItemView) {
-					leaf.view.contentEl.toggleClass("dark", isDark);
-				}
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_LEARNING)) {
+			if (leaf.view instanceof ItemView) {
+				leaf.view.contentEl.toggleClass("dark", isDark);
 			}
 		}
 	}
@@ -613,12 +613,27 @@ export default class LearningSystemPlugin extends Plugin {
 		void this.saveSettings();
 	}
 
-	async activateView(): Promise<void> {
+	/**
+	 * Open or reveal the unified Learning System leaf. When `mode` is
+	 * provided:
+	 *   - If a leaf already exists, switch its mode via `setMode` after
+	 *     revealing.
+	 *   - If creating a new leaf, seed the initial view state with the
+	 *     mode so `setState` lands on the requested mode before the
+	 *     React tree first renders (no Browse → target-mode flash).
+	 *
+	 * No-mode calls (e.g. the brain ribbon) preserve the leaf's
+	 * persisted mode, or default to Browse on first-ever open.
+	 */
+	async activateView(options?: { mode?: Mode }): Promise<void> {
 		const { workspace } = this.app;
 		const existing = workspace.getLeavesOfType(VIEW_TYPE_LEARNING)[0];
 
 		if (existing) {
 			void workspace.revealLeaf(existing);
+			if (options?.mode && existing.view instanceof LearningSystemView) {
+				existing.view.setMode(options.mode);
+			}
 			this.applyTheme();
 			return;
 		}
@@ -626,43 +641,11 @@ export default class LearningSystemPlugin extends Plugin {
 		const leaf = workspace.getRightLeaf(false);
 		if (!leaf) return;
 
-		await leaf.setViewState({ type: VIEW_TYPE_LEARNING, active: true });
-		void workspace.revealLeaf(leaf);
-		this.applyTheme();
-	}
-
-	async activateBrowseView(): Promise<void> {
-		const { workspace } = this.app;
-		const existing = workspace.getLeavesOfType(VIEW_TYPE_BROWSE)[0];
-
-		if (existing) {
-			void workspace.revealLeaf(existing);
-			this.applyTheme();
-			return;
-		}
-
-		const leaf = workspace.getRightLeaf(false);
-		if (!leaf) return;
-
-		await leaf.setViewState({ type: VIEW_TYPE_BROWSE, active: true });
-		void workspace.revealLeaf(leaf);
-		this.applyTheme();
-	}
-
-	async activateNewCardView(): Promise<void> {
-		const { workspace } = this.app;
-		const existing = workspace.getLeavesOfType(VIEW_TYPE_NEW_CARD)[0];
-
-		if (existing) {
-			void workspace.revealLeaf(existing);
-			this.applyTheme();
-			return;
-		}
-
-		const leaf = workspace.getRightLeaf(false);
-		if (!leaf) return;
-
-		await leaf.setViewState({ type: VIEW_TYPE_NEW_CARD, active: true });
+		await leaf.setViewState({
+			type: VIEW_TYPE_LEARNING,
+			active: true,
+			state: options?.mode ? { mode: options.mode } : undefined,
+		});
 		void workspace.revealLeaf(leaf);
 		this.applyTheme();
 	}

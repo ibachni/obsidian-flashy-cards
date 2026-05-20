@@ -32,7 +32,17 @@ const INPUT_CLASS =
  * Cancel button — the pane is dismissed by closing its tab, like Browse
  * and Review.
  */
-export function NewCardPane() {
+interface Props {
+	/**
+	 * Whether this pane is currently the active mode. Used to focus the
+	 * Question field on first activation — the in-pane equivalent of
+	 * the previous `autoFocus`-on-mount, which no-op'd inside the
+	 * unified pane because the editor mounted hidden.
+	 */
+	active: boolean;
+}
+
+export function NewCardPane({ active }: Props) {
 	const { app, plugin } = usePluginContext();
 	const cardsByPath = useCardStore((s) => s.cardsByPath);
 
@@ -44,6 +54,16 @@ export function NewCardPane() {
 	const [saving, setSaving] = useState(false);
 
 	const questionRef = useRef<MarkdownFieldHandle>(null);
+	// One-shot focus: fires the first time the pane becomes active. We
+	// don't re-focus on every revisit — that would yank focus away from
+	// whatever field the user was last editing.
+	const focusedOnceRef = useRef(false);
+	useEffect(() => {
+		if (active && !focusedOnceRef.current) {
+			focusedOnceRef.current = true;
+			questionRef.current?.focus();
+		}
+	}, [active]);
 
 	const cardArray = useMemo(
 		() => Array.from(cardsByPath.values()),
@@ -142,11 +162,7 @@ export function NewCardPane() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-			<header className="flex items-center justify-between gap-2">
-				<h2 className="m-0 text-base font-semibold">New card</h2>
-			</header>
-
+		<div className="flex flex-col gap-4">
 			<Field label="Topic">
 				<TopicCombobox
 					value={topic}
@@ -182,7 +198,6 @@ export function NewCardPane() {
 				label="Question"
 				value={question}
 				onChange={setQuestion}
-				autoFocus
 			/>
 
 			<MarkdownField
