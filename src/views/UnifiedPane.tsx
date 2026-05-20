@@ -34,7 +34,8 @@ interface Props {
 export function UnifiedPane({ mode, mountedModes, onSetMode }: Props) {
 	return (
 		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-			<header>
+			<header className="flex flex-col items-center gap-2">
+				<h1 className="ls-brand m-0">Learning System</h1>
 				<ModeNav active={mode} onChange={onSetMode} />
 			</header>
 			{mountedModes.has("review") && (
