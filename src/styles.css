@@ -21,17 +21,25 @@
  * `.dark` flips the variables to the dark-mode values.
  */
 .learning-system-root {
-	--ls-bg: 250 245 235;        /* cream */
-	--ls-fg: 8 5 0;              /* near-black warm ink — sharper than the
+	/* --ls-bg / --ls-elevated / --ls-fg / --ls-fg-strong are full CSS
+	   colors (not channels) so they can switch between a literal in
+	   light mode and an Obsidian variable in dark mode —
+	   `rgb(var(--ls-bg))` wouldn't accept the forwarded form. The other
+	   tokens stay as RGB channels so `bg-subtle/50`, `bg-accent/10`,
+	   etc. resolve to working color-mix expressions. */
+	--ls-bg: rgb(250 245 235);   /* cream */
+	--ls-fg: rgb(8 5 0);         /* near-black warm ink — sharper than the
 	                                earlier 36/30/22, which sat too light on
 	                                cream and bled visually on small text */
+	--ls-fg-strong: rgb(8 5 0);  /* light mode already maxes contrast on
+	                                cream, so "strong" matches --ls-fg */
 	--ls-accent: 92 78 188;      /* refined indigo */
 	--ls-muted: 120 110 100;
 	/* Elevated surface — popovers/dropdowns. Match --ls-bg so the
 	   surface reads as continuous with the page; border + shadow do
 	   the lift. Earlier separate values (near-white or warm-cream
 	   well) read as washed-out or visually noisy on this palette. */
-	--ls-elevated: 250 245 235;
+	--ls-elevated: rgb(250 245 235);
 	/* Hairline divisions — much lighter than --ls-muted, which is
 	   text-tier. Use border-border / divide-border / etc. anywhere a
 	   visual rule is needed. */
@@ -40,6 +48,11 @@
 	   passive hover doesn't read as a selection. Accent tints
 	   (bg-accent/10) stay reserved for selected / active states. */
 	--ls-subtle: 240 232 218;
+	/* Recessed surface — used where a block needs to read as "set in"
+	   against --ls-bg (e.g. table headers, callout panels). Distinct
+	   from --ls-subtle, which lifts on hover; --ls-surface sits below
+	   the page tone instead. */
+	--ls-surface: rgb(228 218 200);
 
 	/* Semantic state colors used by CardRow tag pills.
 	   Same rgb-channel pattern as --ls-bg/fg/accent/muted so Tailwind's
@@ -51,17 +64,24 @@
 }
 
 .learning-system-root.dark {
-	/* Linear-style palette. Lifted-but-low surfaces with a faint cool
-	   undertone, soft warm-white text, recessive hairlines, and Linear's
-	   signature violet (adapted lighter for dark-mode legibility) as
-	   the only chromatic accent. */
-	--ls-bg: 38 38 42;           /* page bg — charcoal, distinctly off-black */
-	--ls-fg: 233 233 236;        /* soft warm-white, not stark */
+	/* Dark-mode chrome forwards to Obsidian's theme so the pane sits
+	   flush against whatever theme the user is running (default,
+	   Minimal, Things, custom, …). The brand violet + state colors
+	   stay as plugin values so the accents still read as ours.
+
+	   --ls-fg / --ls-fg-strong mirror Obsidian's nav-item pattern (the
+	   file-explorer): the default is the slightly-muted nav tone, hover
+	   lifts to the brighter hover tone. Tracks whatever theme is loaded
+	   instead of a hand-tuned color-mix. */
+	--ls-bg: var(--background-primary);
+	--ls-fg: var(--nav-item-color);
+	--ls-fg-strong: var(--nav-item-color-hover);
 	--ls-accent: 124 132 247;    /* Linear violet, adapted lighter */
 	--ls-muted: 138 138 147;     /* hint-tier secondary text */
-	--ls-elevated: 38 38 42;     /* popovers — match --ls-bg, border + shadow do the lift */
+	--ls-elevated: var(--background-primary);
 	--ls-border: 64 64 70;       /* visible-but-recessive hairlines, lifted to match new bg */
 	--ls-subtle: 52 52 58;       /* hover surface — clear-but-quiet lift over new bg */
+	--ls-surface: var(--background-secondary);  /* recessed — table headers, callouts */
 
 	--ls-state-new: 130 170 240;
 	--ls-state-learning: 230 180 90;
@@ -75,8 +95,8 @@
  * variables but not the bg/min-height).
  */
 .learning-system-pane {
-	background-color: rgb(var(--ls-bg));
-	color: rgb(var(--ls-fg));
+	background-color: var(--ls-bg);
+	color: var(--ls-fg);
 	min-height: 100%;
 }
 
@@ -87,13 +107,15 @@
  * Outside the wrapper, --ls-* is undefined — utilities are inert there.
  */
 @theme {
-	--color-bg: rgb(var(--ls-bg));
-	--color-fg: rgb(var(--ls-fg));
+	--color-bg: var(--ls-bg);
+	--color-fg: var(--ls-fg);
+	--color-fg-strong: var(--ls-fg-strong);
 	--color-accent: rgb(var(--ls-accent));
 	--color-muted: rgb(var(--ls-muted));
-	--color-elevated: rgb(var(--ls-elevated));
+	--color-elevated: var(--ls-elevated);
 	--color-border: rgb(var(--ls-border));
 	--color-subtle: rgb(var(--ls-subtle));
+	--color-surface: var(--ls-surface);
 	--color-state-new: rgb(var(--ls-state-new));
 	--color-state-learning: rgb(var(--ls-state-learning));
 	--color-state-review: rgb(var(--ls-state-review));
@@ -192,10 +214,11 @@
 	   accent-stronger hover-on-selection. */
 	.learning-system-pane .ls-topic-row {
 		cursor: pointer;
-		transition: background-color 150ms ease;
+		transition: background-color 150ms ease, color 150ms ease;
 	}
 	.learning-system-pane .ls-topic-row:hover > td {
 		background-color: rgb(var(--ls-subtle)) !important;
+		color: var(--ls-fg-strong) !important;
 	}
 	.learning-system-pane .ls-topic-row.is-selected > td {
 		background-color: color-mix(
@@ -203,6 +226,7 @@
 			rgb(var(--ls-accent)) 12%,
 			transparent
 		) !important;
+		color: var(--ls-fg-strong) !important;
 	}
 	.learning-system-pane .ls-topic-row.is-selected:hover > td {
 		background-color: color-mix(
@@ -210,14 +234,16 @@
 			rgb(var(--ls-accent)) 22%,
 			transparent
 		) !important;
+		color: var(--ls-fg-strong) !important;
 	}
 
 	/* Card list — same neutral lift as the topic table for consistency. */
 	.learning-system-pane .ls-card-row {
-		transition: background-color 150ms ease;
+		transition: background-color 150ms ease, color 150ms ease;
 	}
 	.learning-system-pane .ls-card-row:hover {
 		background-color: rgb(var(--ls-subtle)) !important;
+		color: var(--ls-fg-strong) !important;
 	}
 
 	/* Tag dropdown items — accent-tinted lift. The dropdown is portaled
@@ -229,7 +255,7 @@
 	   Chrome reset is baked in (background/border/shadow) so the JSX
 	   doesn't need `bg-elevated! border-none! shadow-none!`. */
 	.ls-tag-option {
-		background-color: rgb(var(--ls-elevated)) !important;
+		background-color: var(--ls-elevated) !important;
 		border: 0 !important;
 		box-shadow: none !important;
 		transition: background-color 150ms ease;
@@ -250,7 +276,7 @@
 	   specificity (0,2,0) than `.text-fg\!` (0,1,0) and uses --ls-fg
 	   directly (single var hop) so the cascade can't go sideways. */
 	.learning-system-root .ls-tag-option {
-		color: rgb(var(--ls-fg)) !important;
+		color: var(--ls-fg) !important;
 	}
 
 	/*
@@ -278,8 +304,8 @@
 
 	/* Primary action button — filled ink-on-paper. */
 	.ls-btn-primary {
-		background-color: rgb(var(--ls-fg)) !important;
-		color: rgb(var(--ls-bg)) !important;
+		background-color: var(--ls-fg) !important;
+		color: var(--ls-bg) !important;
 		border: 0 !important;
 		transition: opacity 150ms ease;
 	}
@@ -295,14 +321,14 @@
 	.ls-btn-outline {
 		background-color: transparent !important;
 		border: 1px solid rgb(var(--ls-border)) !important;
-		color: rgb(var(--ls-fg)) !important;
+		color: var(--ls-fg) !important;
 		box-shadow: none !important;
 		transition:
 			background-color 150ms ease,
 			color 150ms ease;
 	}
 	.ls-btn-outline:hover {
-		background-color: rgb(var(--ls-fg)) !important;
-		color: rgb(var(--ls-bg)) !important;
+		background-color: var(--ls-fg) !important;
+		color: var(--ls-bg) !important;
 	}
 }

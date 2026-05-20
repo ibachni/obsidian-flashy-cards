@@ -23,7 +23,7 @@ import { usePluginContext } from "./PluginContext";
 import { TagCombobox } from "./TagCombobox";
 
 const INPUT_CLASS =
-	"w-full rounded border! border-border! bg-transparent! shadow-none! px-2 py-1 text-sm text-fg! focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+	"w-full rounded border! border-border! bg-transparent! shadow-none! px-2 py-1 text-sm text-fg-strong! focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
 
 /**
  * Right-sidebar pane for creating flashcards — Anki-style rapid entry.
@@ -189,7 +189,6 @@ export function NewCardPane({ active }: Props) {
 					onChange={setTags}
 					placeholder="Add tag…"
 					allowCreate
-					compact
 				/>
 			</Field>
 
@@ -198,12 +197,14 @@ export function NewCardPane({ active }: Props) {
 				label="Question"
 				value={question}
 				onChange={setQuestion}
+				onSubmit={() => void onSave()}
 			/>
 
 			<MarkdownField
 				label="Answer"
 				value={answer}
 				onChange={setAnswer}
+				onSubmit={() => void onSave()}
 			/>
 
 			<div className="flex justify-end">
@@ -346,7 +347,7 @@ function TopicCombobox({
 		<>
 			<div
 				ref={triggerRef}
-				className="flex items-center gap-1 py-1"
+				className="flex items-stretch gap-1"
 				onClick={() => inputRef.current?.focus()}
 			>
 				<input
@@ -360,12 +361,12 @@ function TopicCombobox({
 					}}
 					onFocus={() => setOpen(true)}
 					onKeyDown={handleKey}
-					className="min-w-24 flex-1 bg-transparent! text-sm text-fg! outline-none"
+					className="min-w-0 flex-1 rounded border! border-border! bg-transparent! shadow-none! px-2 py-1 text-sm text-fg-strong! outline-none"
 				/>
 				<button
 					ref={chevronRef}
 					type="button"
-					className="shrink-0 rounded border! border-border! bg-transparent! shadow-none! p-1! text-fg! transition-colors hover:bg-subtle!"
+					className="shrink-0 flex items-center justify-center rounded border! border-border! bg-transparent! shadow-none! px-2! text-fg! transition-colors hover:bg-subtle!"
 					onClick={(e) => {
 						// stopPropagation: the trigger <div> has its own
 						// onClick that refocuses the input. Without
@@ -394,9 +395,7 @@ function TopicCombobox({
 							top: panelStyle.top,
 							right: panelStyle.right,
 							zIndex: 1000,
-							backgroundColor: isDark
-								? "rgb(38, 38, 42)"
-								: "rgb(250, 245, 235)",
+							backgroundColor: "var(--ls-elevated)",
 						}}
 						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-45 max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
 					>

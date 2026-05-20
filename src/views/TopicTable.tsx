@@ -30,8 +30,8 @@ export function TopicTable({ rows, selected, onToggle }: Props) {
 	return (
 		<div className="overflow-hidden rounded-md border border-border">
 			<table className="w-full text-sm">
-				<thead className="bg-subtle/50">
-					<tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
+				<thead className="bg-surface!">
+					<tr className="border-b border-border text-xs uppercase tracking-wide text-fg-strong!">
 						<th className="px-3 py-2 text-left font-semibold">Topic</th>
 						<th className="px-3 py-2 text-right font-semibold">New</th>
 						<th className="px-3 py-2 text-right font-semibold">Learning</th>

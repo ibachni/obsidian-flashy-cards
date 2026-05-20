@@ -162,7 +162,7 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 			{filtersActive && (
 				<button
 					type="button"
-					className="ls-flat self-start text-xs text-muted! underline transition-colors hover:text-fg!"
+					className="ls-flat self-start text-xs text-muted! underline transition-colors hover:text-fg-strong!"
 					onClick={clearAll}
 				>
 					Clear all filters

@@ -18,6 +18,12 @@ interface Props {
 	onChange: (next: string) => void;
 	autoFocus?: boolean;
 	/**
+	 * Cmd+Enter handler. Captured via ref so the most recent closure
+	 * (with the latest React state) is the one that fires — no need to
+	 * rebuild extensions when the parent's callback identity changes.
+	 */
+	onSubmit?: () => void;
+	/**
 	 * Fixed-height utility for the editor wrapper. Required so CM6's
 	 * `height: 100%` resolves against an explicit parent height —
 	 * `min-h-*` collapses to `auto` for percentage children and leaves
@@ -53,12 +59,13 @@ interface Props {
  */
 export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, Props>(
 	function EmbeddedEditor(
-		{ value, onChange, autoFocus, heightClass = "h-24" },
+		{ value, onChange, autoFocus, onSubmit, heightClass = "h-24" },
 		ref,
 	) {
 		const containerRef = useRef<HTMLDivElement>(null);
 		const viewRef = useRef<EditorView | null>(null);
 		const onChangeRef = useRef(onChange);
+		const onSubmitRef = useRef(onSubmit);
 		// Tracks what the editor's doc *should* be from the prop side.
 		// Set inside both effects so neither feeds back into the other.
 		const lastPropValueRef = useRef(value);
@@ -68,15 +75,22 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, Props>(
 		}, [onChange]);
 
 		useEffect(() => {
+			onSubmitRef.current = onSubmit;
+		}, [onSubmit]);
+
+		useEffect(() => {
 			const container = containerRef.current;
 			if (!container) return;
 
-			const extensions = buildExtensions((doc) => {
-				if (doc !== lastPropValueRef.current) {
-					lastPropValueRef.current = doc;
-					onChangeRef.current(doc);
-				}
-			});
+			const extensions = buildExtensions(
+				(doc) => {
+					if (doc !== lastPropValueRef.current) {
+						lastPropValueRef.current = doc;
+						onChangeRef.current(doc);
+					}
+				},
+				() => onSubmitRef.current ?? null,
+			);
 
 			const view = new EditorView({
 				state: EditorState.create({

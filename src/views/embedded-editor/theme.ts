@@ -13,8 +13,9 @@ export const themeExtension = EditorView.theme({
 	"&": {
 		height: "100%",
 		fontSize: "0.875rem",
+		fontFamily: "inherit",
 		backgroundColor: "transparent",
-		color: "rgb(var(--ls-fg))",
+		color: "var(--ls-fg-strong)",
 	},
 	// Fill the editor's available height so empty space below text is
 	// still part of the editable surface — clicking anywhere focuses
@@ -27,7 +28,7 @@ export const themeExtension = EditorView.theme({
 		minHeight: "100%",
 		padding: "0.25rem 0.5rem",
 		fontFamily: "inherit",
-		caretColor: "rgb(var(--ls-fg))",
+		caretColor: "var(--ls-fg-strong)",
 		// Suppress the browser default focus outline on the
 		// contenteditable element — it's what was showing up as a
 		// dotted horizontal line between filled and empty rows.
@@ -40,7 +41,7 @@ export const themeExtension = EditorView.theme({
 		padding: "0",
 	},
 	"&.cm-focused .cm-cursor": {
-		borderLeftColor: "rgb(var(--ls-fg))",
+		borderLeftColor: "var(--ls-fg-strong)",
 	},
 	".cm-selectionBackground, ::selection": {
 		backgroundColor:
@@ -79,6 +80,34 @@ export const themeExtension = EditorView.theme({
 	".cm-link": {
 		color: "rgb(var(--ls-accent))",
 		textDecoration: "underline",
+	},
+
+	// Obsidian-style `#tag` pill. Subtle accent-tinted background +
+	// rounded corners, matching how Obsidian's editor itself paints
+	// tags in Live Preview.
+	".cm-tag": {
+		color: "rgb(var(--ls-accent))",
+		backgroundColor:
+			"color-mix(in srgb, rgb(var(--ls-accent)) 12%, transparent)",
+		borderRadius: "0.4em",
+		padding: "0 0.4em",
+		fontSize: "0.9em",
+	},
+
+	// GFM strikethrough `~~text~~`.
+	".cm-strikethrough": {
+		textDecoration: "line-through",
+		color: "rgb(var(--ls-muted))",
+	},
+
+	// Obsidian-style `==highlight==`. Soft yellow tint that adapts to
+	// theme via `color-mix` against the accent — keeps a single brand
+	// token in play rather than introducing a new highlight color.
+	".cm-highlight": {
+		backgroundColor:
+			"color-mix(in srgb, rgb(var(--ls-state-learning)) 35%, transparent)",
+		borderRadius: "0.2em",
+		padding: "0 0.15em",
 	},
 
 	// Math widget containers (Phase B.3). Inline math sits in the

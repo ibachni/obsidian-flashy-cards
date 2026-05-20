@@ -15,6 +15,8 @@ interface Props {
 	onChange: (next: string) => void;
 	autoFocus?: boolean;
 	optional?: boolean;
+	/** Cmd+Enter handler — forwarded to the embedded editor. */
+	onSubmit?: () => void;
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  */
 export const MarkdownField = forwardRef<MarkdownFieldHandle, Props>(
 	function MarkdownField(
-		{ label, value, onChange, autoFocus, optional },
+		{ label, value, onChange, autoFocus, optional, onSubmit },
 		ref,
 	) {
 		const editorRef = useRef<EmbeddedEditorHandle>(null);
@@ -53,6 +55,7 @@ export const MarkdownField = forwardRef<MarkdownFieldHandle, Props>(
 					value={value}
 					onChange={onChange}
 					autoFocus={autoFocus}
+					onSubmit={onSubmit}
 				/>
 			</div>
 		);

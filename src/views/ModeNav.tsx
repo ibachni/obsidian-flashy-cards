@@ -47,10 +47,10 @@ function ModeButton({
 	// `.ls-flat` strips Obsidian's default button chrome; everything else
 	// is text styling. Active = underlined + fg ink + medium weight.
 	// Inactive = muted text that goes bold + fg on hover.
-	const base = "ls-flat px-0! text-sm transition-colors";
+	const base = "ls-flat px-0! text-base! transition-colors";
 	const styles = isActive
-		? "text-fg! font-medium! underline underline-offset-4 cursor-default"
-		: "text-muted! hover:text-fg! hover:font-bold";
+		? "text-fg-strong! font-medium! underline underline-offset-4 cursor-default"
+		: "text-muted! hover:text-fg-strong! hover:font-bold";
 	return (
 		<button
 			type="button"

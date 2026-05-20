@@ -21,14 +21,6 @@ interface Props {
 	 * the Browse pane's filter-only behavior.
 	 */
 	allowCreate?: boolean;
-	/**
-	 * When true, drops the trigger row's horizontal padding so the
-	 * input's border aligns with the parent's content edge rather than
-	 * sitting 8px inset. Used by the new-card pane where surrounding
-	 * fields paint their border at the content edge; Browse leaves this
-	 * unset for the original visual.
-	 */
-	compact?: boolean;
 }
 
 
@@ -55,7 +47,6 @@ export function TagCombobox({
 	onChange,
 	placeholder = "Filter by tag…",
 	allowCreate = false,
-	compact = false,
 }: Props) {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
@@ -197,13 +188,13 @@ export function TagCombobox({
 		<>
 			<div
 				ref={triggerRef}
-				className={`flex items-center gap-1 py-1${compact ? "" : " px-2"}`}
+				className="flex items-stretch gap-1"
 				onClick={() => inputRef.current?.focus()}
 			>
 				<input
 					ref={inputRef}
 					type="text"
-					className="min-w-[6rem] flex-1 bg-transparent! text-sm text-fg! outline-none"
+					className="min-w-0 flex-1 rounded border! border-border! bg-transparent! shadow-none! px-2 py-1 text-sm text-fg-strong! outline-none"
 					placeholder={placeholder}
 					value={query}
 					onChange={(e) => {
@@ -216,7 +207,7 @@ export function TagCombobox({
 				<button
 					ref={chevronRef}
 					type="button"
-					className="shrink-0 rounded border! border-border! bg-transparent! shadow-none! p-1! text-fg! transition-colors hover:bg-subtle!"
+					className="shrink-0 flex items-center justify-center rounded border! border-border! bg-transparent! shadow-none! px-2! text-fg! transition-colors hover:bg-subtle!"
 					onClick={(e) => {
 						// stopPropagation: the trigger <div> has its own
 						// onClick that refocuses the input ("click row → focus
@@ -254,22 +245,20 @@ export function TagCombobox({
 							top: panelStyle.top,
 							right: panelStyle.right,
 							zIndex: 1000,
-							// Hardcoded bg as a defensive fallback — Tailwind's
-							// `bg-elevated` resolves through two layers of CSS
-							// vars (`--color-elevated` → `--ls-elevated`), and
-							// at least one user setup ended up with a
-							// transparent panel that exposed cards behind.
-							// Inline RGB has no resolution chain to fail.
-							backgroundColor: isDark
-								? "rgb(38, 38, 42)"
-								: "rgb(250, 245, 235)",
+							// Inline bg (not the `bg-elevated` utility) because the
+							// panel is portaled to document.body, where Tailwind's
+							// layered utility lost the cascade to Obsidian's
+							// unlayered surface defaults in at least one user
+							// setup, exposing cards behind. Inline style wins
+							// regardless of source order.
+							backgroundColor: "var(--ls-elevated)",
 						}}
 						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-[180px] max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
 					>
 						<div className="sticky top-0 z-10 flex items-center justify-end bg-elevated! px-1 py-0.5">
 							<button
 								type="button"
-								className="ls-flat rounded p-1 text-muted! transition-colors hover:bg-subtle! hover:text-fg!"
+								className="ls-flat rounded p-1 text-muted! transition-colors hover:bg-subtle! hover:text-fg-strong!"
 								onClick={() => setOpen(false)}
 								aria-label="Close suggestions"
 							>
@@ -343,7 +332,7 @@ function Chip({
 			<span
 				role="button"
 				tabIndex={0}
-				className="cursor-pointer text-xs leading-none text-muted transition-colors hover:text-fg!"
+				className="cursor-pointer text-xs leading-none text-muted transition-colors hover:text-fg-strong!"
 				onClick={onRemove}
 				onKeyDown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
