@@ -30,7 +30,7 @@ interface Props {
 }
 
 export function BrowsePane({ onSwitchToReview }: Props) {
-	const { app } = usePluginContext();
+	const { app, plugin } = usePluginContext();
 	const cardsByPath = useCardStore((s) => s.cardsByPath);
 	const setReviewScope = useCardStore((s) => s.setReviewScope);
 
@@ -176,7 +176,12 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 			) : (
 				<ul className="m-0 flex list-none flex-col p-0">
 					{filtered.map((c: ParsedCard) => (
-						<CardRow key={c.path} card={c} onClick={handleRowClick} />
+						<CardRow
+							key={c.path}
+							card={c}
+							onClick={handleRowClick}
+							onEdit={(card) => plugin.openEditCardModal(card)}
+						/>
 					))}
 				</ul>
 			)}

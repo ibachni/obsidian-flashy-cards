@@ -126,6 +126,13 @@ export function ReviewPane() {
 						{` · due ${current.fm.fsrs_due}`}
 						{` · ${current.fm.fsrs_state}`}
 					</span>
+					<button
+						type="button"
+						className="ls-flat ml-auto rounded px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted! hover:text-fg-strong! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+						onClick={() => plugin.openEditCardModal(current)}
+					>
+						Edit
+					</button>
 				</div>
 				<span>
 					{doneCount} done · {due.length} due · {newCount} new

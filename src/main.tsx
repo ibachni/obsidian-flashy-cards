@@ -1,6 +1,7 @@
 import {
 	App,
 	ItemView,
+	Modal,
 	Notice,
 	Plugin,
 	PluginSettingTab,
@@ -24,6 +25,7 @@ import {
 	type FSRS,
 	type Grade,
 } from "./srs/fsrs-engine";
+import { EditCardModal } from "./views/EditCardModal";
 import type { Mode } from "./views/ModeNav";
 import { PluginContextProvider } from "./views/PluginContext";
 import { UnifiedPane } from "./views/UnifiedPane";
@@ -348,6 +350,97 @@ class LearningSystemSettingTab extends PluginSettingTab {
 	}
 }
 
+/**
+ * Modal host for the edit-card form. Mounts a React root inside the
+ * modal's `contentEl`, scoped with `learning-system-root` +
+ * `learning-system-pane` so theme variables cascade and the
+ * `closest(".learning-system-root")` walk used by TagCombobox /
+ * TopicCombobox resolves correctly.
+ *
+ * The modal is the dismissal surface: `onSaved` / `onCancel` both call
+ * `this.close()`. Form state lives inside React and is discarded on
+ * close — dirty-confirm runs *inside* React (Cancel button / Esc), not
+ * here. (Obsidian's default Esc-to-close is fine: an Esc that escapes
+ * React lands here, and there's nothing to confirm because either the
+ * form was clean or the user already saw the confirm dialog.)
+ */
+class LearningSystemEditCardModal extends Modal {
+	private root: Root | null = null;
+	private readonly plugin: LearningSystemPlugin;
+	private readonly card: ParsedCard;
+	// Predicate set by the React form — returns false to veto a close
+	// (Esc / outside-click / Cancel). Defaults to "always allow" so the
+	// modal stays closable if React hasn't registered yet.
+	private confirmClose: () => boolean = () => true;
+
+	constructor(plugin: LearningSystemPlugin, card: ParsedCard) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.card = card;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass("learning-system-root");
+		contentEl.addClass("learning-system-pane");
+		// Apply current theme — Obsidian's Modal sits outside the
+		// LearningSystemView's contentEl, so applyTheme()'s loop misses it.
+		const isDark =
+			this.plugin.settings.theme === "dark" ||
+			(this.plugin.settings.theme === "system" &&
+				document.body.classList.contains("theme-dark"));
+		contentEl.toggleClass("dark", isDark);
+
+		const mountEl = contentEl.createDiv();
+		this.root = createRoot(mountEl);
+		this.root.render(
+			<PluginContextProvider
+				value={{
+					app: this.app,
+					plugin: this.plugin,
+					// PluginContext expects a Component; Modal isn't one. The
+					// plugin is a long-lived Component and `ctx.view` is
+					// currently only used as a parent for any future
+					// MarkdownRenderer call — fine for the modal's lifetime.
+					view: this.plugin,
+				}}
+			>
+				<EditCardModal
+					card={this.card}
+					onSaved={() => this.forceClose()}
+					onCancel={() => this.close()}
+					registerConfirmClose={(fn) => {
+						this.confirmClose = fn;
+					}}
+				/>
+			</PluginContextProvider>,
+		);
+	}
+
+	/**
+	 * Obsidian's default Esc / outside-click both route through `close()`,
+	 * so this is the chokepoint where the dirty-confirm has to live.
+	 * `onSaved` calls `forceClose()` to bypass the predicate after a
+	 * successful write.
+	 */
+	close(): void {
+		if (!this.confirmClose()) return;
+		super.close();
+	}
+
+	private forceClose(): void {
+		this.confirmClose = () => true;
+		super.close();
+	}
+
+	onClose(): void {
+		this.root?.unmount();
+		this.root = null;
+		this.contentEl.empty();
+	}
+}
+
 export default class LearningSystemPlugin extends Plugin {
 	settings: LearningSystemSettings = DEFAULT_SETTINGS;
 	private fsrsEngine: FSRS = makeEngine();
@@ -396,6 +489,23 @@ export default class LearningSystemPlugin extends Plugin {
 			id: "toggle-theme",
 			name: "Toggle theme (cream / dark)",
 			callback: () => this.toggleTheme(),
+		});
+
+		// Hidden when no card is due (checkCallback returns false) so the
+		// palette doesn't show an action with no target. Same "current
+		// card" notion the Review pane uses — pickNext over the store
+		// with the active review scope.
+		this.addCommand({
+			id: "edit-current-card",
+			name: "Edit current card",
+			checkCallback: (checking) => {
+				const state = useCardStore.getState();
+				const cards = Array.from(state.cardsByPath.values());
+				const card = pickNext(cards, new Date(), state.reviewScope);
+				if (!card) return false;
+				if (!checking) this.openEditCardModal(card);
+				return true;
+			},
 		});
 
 		// `d` toggles cream/dark while a Learning System pane is the
@@ -653,6 +763,10 @@ export default class LearningSystemPlugin extends Plugin {
 	normalizedCardsRoot(): string {
 		const r = this.settings.cardsRoot;
 		return r.endsWith("/") ? r : r + "/";
+	}
+
+	openEditCardModal(card: ParsedCard): void {
+		new LearningSystemEditCardModal(this, card).open();
 	}
 
 	async scanAndStoreCards(): Promise<void> {
