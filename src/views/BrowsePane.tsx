@@ -181,6 +181,7 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 							card={c}
 							onClick={handleRowClick}
 							onEdit={(card) => plugin.openEditCardModal(card)}
+							onDelete={(card) => plugin.openDeleteCardConfirm(card)}
 						/>
 					))}
 				</ul>

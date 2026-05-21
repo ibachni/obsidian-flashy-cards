@@ -11,10 +11,10 @@ The plugin today covers: Review (FSRS), Browse (filter + scoped review), Create 
 These are the things a user runs into within the first hour of real use. Without them, the system feels unfinished.
 
 ### 1. Edit an existing card from the UI
-Currently a user has to open the .md file and edit Q/A by hand. They can also accidentally clobber FSRS frontmatter. Add an "Edit" action on [src/views/CardRow.tsx](../../src/views/CardRow.tsx) and in the Review pane that opens the card in a NewCardPane-style form (with FSRS fields protected). Save writes Q/A and `modified` only; never touches `fsrs_*`.
+**Shipped** — see [edit-card.md](./edit-card.md). Pencil icon on each Browse row, "Edit" button in the Review footer, and the `learning-system:edit-current-card` command open a modal form. Frontmatter writes go through `processFrontMatter` so `fsrs_*` is never touched; body writes use a narrow `rewriteBody` that copies the frontmatter block byte-for-byte.
 
 ### 2. Delete a card from the UI
-Trash icon on each row in Browse and a "Delete" action in Review. Confirm modal, then `app.vault.trash(file, true)` (system trash, recoverable). Removes from the store immediately.
+**Shipped** — see [delete-card.md](./delete-card.md). Trash icon on each Browse row, "Delete" button in the Review footer, and the `learning-system:delete-current-card` command open a confirm modal that runs `app.vault.trash(file, true)` (system trash, recoverable). Optimistic `removeCard` so Browse/Review re-render in the same tick; prunes the path from `reviewScope` if a scoped session is active.
 
 ### 3. Undo last grade
 Single-step undo is enough. After every grade, stash `{ path, previousFm }` in a one-slot ring buffer. A keyboard shortcut (e.g. `u` or `cmd+z` while Review is focused) and a small "Undo" link in the footer restores the prior FSRS state. Critical for fat-finger mistakes — the most-requested Anki feature.
@@ -49,17 +49,10 @@ Schema change: add `fsrs_cloze_index: number | null` and treat cloze siblings as
 Two integers in settings: `dailyNewLimit` (default 10) and `dailyReviewCap` (default unlimited). The picker honors both. Stops the "new-card avalanche" that happens when a user adds 50 cards in a batch and is then crushed by reviews three days later.
 
 ### 9. Statistics / progress dashboard
-A fourth mode in the nav: **Stats**. Show:
-- Cards by state (new / learning / review / relearning) — pie or bar.
-- Retention rate (% Good+Easy out of last 200 grades).
-- Daily review streak.
-- Forecast: cards due over the next 30 days, stacked by state.
-- Per-topic retention so the user knows where they're weakest.
-
-Read the data from existing frontmatter — no new persistence layer needed. Computed on the fly from `useCardStore`.
+**Shipped** — see [stats-pane.md](./stats-pane.md). Fourth mode in the nav: **Stats**, with five panels — state breakdown, 30-day forecast (stacked by state), retention rate (last 200 grades), daily streak (with "today alive" semantics), and per-topic retention (last 30 days, weakest-first, with a min-grade noise floor). Frontmatter panels read from `useCardStore`; log-derived panels read through a shared `useReviewLog` hook that refreshes on `metadataCache.changed`.
 
 ### 10. Heatmap calendar of reviews
-GitHub-style year heatmap of reviews per day. Requires logging each grade — see #15 (review log).
+**Shipped** — see [stats-pane.md](./stats-pane.md) (the sixth panel on the Stats pane). GitHub-style 53×7 SVG grid with adaptive cell sizing via `ResizeObserver` (6–12px), 5 color buckets ramping from `--ls-subtle` through `--ls-accent` so cream/dark theming works without a per-bucket branch. Auto-falls-back to a 26-week view on narrow panes with a "Show full year" toggle when there's an actual choice to make.
 
 ### 11. Bulk operations in Browse
 Multi-select rows (checkbox column or `shift-click`). Bulk actions:
@@ -83,11 +76,9 @@ Action buttons in Review and Browse. Suspended cards show in Browse with a muted
 Boolean `flagged: bool` in frontmatter. UI: flag icon in Review and Browse. Filter pill in Browse ("Flagged only"). Useful for "come back to this", "review with teacher", "wrong answer feels arbitrary".
 
 ### 15. Per-card review history
-Append-only log of grades. Two options:
-- **Inline** in frontmatter as `fsrs_log: [{date, grade, interval}]` (gets long quickly).
-- **Sidecar file** at `<root>/.learning-system/history/<path-hash>.jsonl` (cleaner; survives card moves via path hash).
+**Partially shipped** — sidecar log foundation landed; see [review-log.md](./review-log.md). Append-only JSONL at `<cardsRoot>/.learning-system/history/<YYYY-MM>.jsonl` with one line per grade `{path, topic, date, grade, interval, prevState}`. Hooked into `gradeAndPersist` as a best-effort write (never blocks a grade). Read primitives `appendGrade` / `readMonth` / `readRecent` / `readAll` already consumed by the Stats pane (#9) and the heatmap (#10).
 
-Sidecar is the right answer. Surface the log in Browse as a popover on row hover, and as a section in the (future) per-card detail view.
+**Still TODO**: surface the log per-card (Browse row hover popover; per-card detail view). The data is there — only the UI is missing.
 
 ### 16. Image support
 Drag-and-drop or paste an image into Q/A. Image gets saved under `<cardsRoot>/_attachments/` and embedded as `![[…]]`. Renders in Review via the existing `MarkdownBlock`. Essential for diagrams, anatomy, anything visual.

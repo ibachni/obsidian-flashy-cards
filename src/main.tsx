@@ -13,9 +13,11 @@ import {
 } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
 
+import { seedDemoLog } from "./cards/demo-seed";
 import type { ParsedCard } from "./cards/parser";
 import { parseCardFile, scanCards } from "./cards/parser";
 import { pickNext } from "./cards/picker";
+import { appendGrade, type ReviewLogEntry } from "./cards/review-log";
 import { useCardStore } from "./cards/store";
 import type { CardFrontmatterT } from "./schema/card";
 import {
@@ -25,6 +27,7 @@ import {
 	type FSRS,
 	type Grade,
 } from "./srs/fsrs-engine";
+import { DeleteCardConfirm } from "./views/DeleteCardConfirm";
 import { EditCardModal } from "./views/EditCardModal";
 import type { Mode } from "./views/ModeNav";
 import { PluginContextProvider } from "./views/PluginContext";
@@ -60,7 +63,9 @@ const DEFAULT_SETTINGS: LearningSystemSettings = {
 function parseModeFromState(state: unknown): Mode | null {
 	if (!state || typeof state !== "object") return null;
 	const m = (state as { mode?: unknown }).mode;
-	if (m === "review" || m === "browse" || m === "create") return m;
+	if (m === "review" || m === "browse" || m === "create" || m === "stats") {
+		return m;
+	}
 	return null;
 }
 
@@ -441,6 +446,65 @@ class LearningSystemEditCardModal extends Modal {
 	}
 }
 
+/**
+ * Modal host for the delete confirmation. Same scoping (theme classes +
+ * React root) as the edit modal, but simpler: there's no form state to
+ * preserve, so Esc / outside-click can close freely.
+ */
+class LearningSystemDeleteCardConfirm extends Modal {
+	private root: Root | null = null;
+	private readonly plugin: LearningSystemPlugin;
+	private readonly card: ParsedCard;
+	private readonly onAfterDelete?: () => void;
+
+	constructor(
+		plugin: LearningSystemPlugin,
+		card: ParsedCard,
+		onAfterDelete?: () => void,
+	) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.card = card;
+		this.onAfterDelete = onAfterDelete;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass("learning-system-root");
+		contentEl.addClass("learning-system-pane");
+		const isDark =
+			this.plugin.settings.theme === "dark" ||
+			(this.plugin.settings.theme === "system" &&
+				document.body.classList.contains("theme-dark"));
+		contentEl.toggleClass("dark", isDark);
+
+		const mountEl = contentEl.createDiv();
+		this.root = createRoot(mountEl);
+		this.root.render(
+			<PluginContextProvider
+				value={{
+					app: this.app,
+					plugin: this.plugin,
+					view: this.plugin,
+				}}
+			>
+				<DeleteCardConfirm
+					card={this.card}
+					onAfterDelete={this.onAfterDelete}
+					onClosed={() => this.close()}
+				/>
+			</PluginContextProvider>,
+		);
+	}
+
+	onClose(): void {
+		this.root?.unmount();
+		this.root = null;
+		this.contentEl.empty();
+	}
+}
+
 export default class LearningSystemPlugin extends Plugin {
 	settings: LearningSystemSettings = DEFAULT_SETTINGS;
 	private fsrsEngine: FSRS = makeEngine();
@@ -486,6 +550,24 @@ export default class LearningSystemPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "open-stats",
+			name: "Open stats",
+			callback: () => void this.activateView({ mode: "stats" }),
+		});
+
+		// Dev-only seeder for the review log so the Stats pane has data
+		// to render on a fresh install. Writes ~1000 fake grade entries
+		// to `<cardsRoot>/.learning-system/history/`. Delete that
+		// directory to clean up.
+		this.addCommand({
+			id: "seed-demo-log",
+			name: "Seed demo review log (dev)",
+			callback: () => {
+				void this.runSeedDemoLog();
+			},
+		});
+
+		this.addCommand({
 			id: "toggle-theme",
 			name: "Toggle theme (cream / dark)",
 			callback: () => this.toggleTheme(),
@@ -504,6 +586,23 @@ export default class LearningSystemPlugin extends Plugin {
 				const card = pickNext(cards, new Date(), state.reviewScope);
 				if (!card) return false;
 				if (!checking) this.openEditCardModal(card);
+				return true;
+			},
+		});
+
+		// Same "current card" notion as edit-current-card — pickNext over
+		// the store with the active review scope. Hidden when no card is
+		// due so the palette doesn't surface a destructive action with
+		// no target.
+		this.addCommand({
+			id: "delete-current-card",
+			name: "Delete current card",
+			checkCallback: (checking) => {
+				const state = useCardStore.getState();
+				const cards = Array.from(state.cardsByPath.values());
+				const card = pickNext(cards, new Date(), state.reviewScope);
+				if (!card) return false;
+				if (!checking) this.openDeleteCardConfirm(card);
 				return true;
 			},
 		});
@@ -769,6 +868,29 @@ export default class LearningSystemPlugin extends Plugin {
 		new LearningSystemEditCardModal(this, card).open();
 	}
 
+	openDeleteCardConfirm(card: ParsedCard, onAfterDelete?: () => void): void {
+		new LearningSystemDeleteCardConfirm(this, card, onAfterDelete).open();
+	}
+
+	private async runSeedDemoLog(): Promise<void> {
+		try {
+			const count = await seedDemoLog(this.app, this.normalizedCardsRoot());
+			// Sidecar .jsonl writes don't fire metadataCache.changed (only
+			// markdown frontmatter changes do), and StatsPane is sticky-
+			// mounted so mode-switching doesn't re-mount the React tree.
+			// The only ways to refresh: grade a card or close/reopen the
+			// leaf. Spelling that out so the user isn't confused when the
+			// pane stays empty.
+			new Notice(
+				`Seeded ${count} demo log entries. Grade any card or reopen the Learning System leaf to refresh Stats.`,
+			);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			console.error("[learning-system] seed-demo-log failed:", e);
+			new Notice(`Seed failed: ${msg}`);
+		}
+	}
+
 	async scanAndStoreCards(): Promise<void> {
 		const result = await scanCards(this.app, this.settings.cardsRoot);
 		const store = useCardStore.getState();
@@ -803,6 +925,10 @@ export default class LearningSystemPlugin extends Plugin {
 		}
 
 		const now = new Date();
+		// Snapshot the pre-grade state before processFrontMatter mutates
+		// the on-disk frontmatter — the log entry needs to record where
+		// the card was *coming from*, not where it ends up.
+		const prevState = card.fm.fsrs_state;
 		const update = gradeWith(this.fsrsEngine, card.fm, rating, now);
 
 		const modified = now.toISOString().slice(0, 10);
@@ -822,6 +948,23 @@ export default class LearningSystemPlugin extends Plugin {
 		// event arrives later and reconciles.
 		const updatedFm: CardFrontmatterT = { ...card.fm, ...update, modified };
 		useCardStore.getState().setCard({ ...card, fm: updatedFm });
+
+		// Append to the sidecar log. Best-effort — a failed log write
+		// must never block or surface to the user; the grade already
+		// landed in frontmatter.
+		try {
+			const entry: ReviewLogEntry = {
+				path: card.path,
+				topic: card.fm.topic,
+				date: modified,
+				grade: rating as ReviewLogEntry["grade"],
+				interval: update.fsrs_scheduled_days,
+				prevState,
+			};
+			await appendGrade(this.app, this.normalizedCardsRoot(), entry);
+		} catch (e) {
+			console.error("[learning-system] review-log append failed:", e);
+		}
 	}
 
 	async gradeNextDue(rating: Grade): Promise<void> {

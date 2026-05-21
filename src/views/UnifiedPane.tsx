@@ -2,6 +2,7 @@ import { BrowsePane } from "./BrowsePane";
 import { ModeNav, type Mode } from "./ModeNav";
 import { NewCardPane } from "./NewCardPane";
 import { ReviewPane } from "./ReviewPane";
+import { StatsPane } from "./StatsPane";
 
 interface Props {
 	mode: Mode;
@@ -51,6 +52,11 @@ export function UnifiedPane({ mode, mountedModes, onSetMode }: Props) {
 			{mountedModes.has("create") && (
 				<div hidden={mode !== "create"}>
 					<NewCardPane active={mode === "create"} />
+				</div>
+			)}
+			{mountedModes.has("stats") && (
+				<div hidden={mode !== "stats"}>
+					<StatsPane />
 				</div>
 			)}
 		</div>

@@ -1,9 +1,10 @@
-export type Mode = "review" | "browse" | "create";
+export type Mode = "review" | "browse" | "create" | "stats";
 
 const ORDER: { mode: Mode; label: string }[] = [
 	{ mode: "review", label: "Review" },
 	{ mode: "browse", label: "Browse" },
 	{ mode: "create", label: "Create" },
+	{ mode: "stats", label: "Stats" },
 ];
 
 interface Props {

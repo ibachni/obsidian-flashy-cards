@@ -133,6 +133,17 @@ export function ReviewPane() {
 					>
 						Edit
 					</button>
+					<button
+						type="button"
+						className="ls-flat rounded px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted! hover:text-state-overdue! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+						onClick={() =>
+							plugin.openDeleteCardConfirm(current, () =>
+								setRevealed(false),
+							)
+						}
+					>
+						Delete
+					</button>
 				</div>
 				<span>
 					{doneCount} done · {due.length} due · {newCount} new

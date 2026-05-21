@@ -209,15 +209,17 @@
  * Browse-view hover highlights.
  *
  * These rules MUST live inside `@layer utilities` (the same layer
- * Tailwind compiles into). The card button carries `bg-transparent!`
- * and the dropdown items carry `bg-elevated!`, both of which are
- * `!important` declarations inside `@layer utilities`. For !important
- * declarations, the cascade is reversed: layered styles win over
- * unlayered, regardless of selector specificity. Putting these rules
- * outside any layer silently lost to Tailwind's own utilities.
+ * Tailwind compiles into). The card-row label button carries
+ * `text-fg!` and the dropdown items carry `bg-elevated!`, both of
+ * which are `!important` declarations inside `@layer utilities`.
+ * For !important declarations, the cascade is reversed: layered
+ * styles win over unlayered, regardless of selector specificity.
+ * Putting these rules outside any layer silently lost to Tailwind's
+ * own utilities.
  *
- * Inside the same layer, specificity decides — `.learning-system-pane
- * .ls-card-row:hover` (0,2,1) beats `.bg-transparent\!` (0,1,0).
+ * Inside the same layer, specificity decides — e.g. `.learning-system-pane
+ * .ls-card-row:hover .ls-card-row-label` (0,3,0) beats `.text-fg\!`
+ * (0,1,0) so the label's hover color shift wins.
  *
  * The topic-table rules paint on <td> rather than <tr> because
  * Obsidian's `tr:hover td` rule paints a cell background that
@@ -251,12 +253,20 @@
 		color: var(--ls-fg-strong) !important;
 	}
 
-	/* Card list — same neutral lift as the topic table for consistency. */
+	/* Card list — same neutral lift as the topic table for consistency.
+	   `ls-card-row` sits on the <li>, so hover anywhere on the row
+	   (label button or the edit/delete icons) paints one continuous
+	   bg behind all three children. The label button additionally
+	   carries `ls-card-row-label` so the descendant rule can override
+	   its own `text-fg!` on hover. */
 	.learning-system-pane .ls-card-row {
 		transition: background-color 150ms ease, color 150ms ease;
 	}
 	.learning-system-pane .ls-card-row:hover {
 		background-color: rgb(var(--ls-subtle)) !important;
+		color: var(--ls-fg-strong) !important;
+	}
+	.learning-system-pane .ls-card-row:hover .ls-card-row-label {
 		color: var(--ls-fg-strong) !important;
 	}
 
@@ -344,5 +354,40 @@
 	.ls-btn-outline:hover {
 		background-color: var(--ls-fg) !important;
 		color: var(--ls-bg) !important;
+	}
+
+	/* Destructive action — fills with the overdue/clay-red token so the
+	   color reads as "stop, this is a write you can't easily undo". */
+	.ls-btn-danger {
+		background-color: rgb(var(--ls-state-overdue)) !important;
+		color: var(--ls-bg) !important;
+		border: 0 !important;
+		transition: opacity 150ms ease;
+	}
+	.ls-btn-danger:hover {
+		opacity: 0.9;
+	}
+	.ls-btn-danger:disabled {
+		opacity: 0.4 !important;
+		cursor: not-allowed !important;
+	}
+
+	/* Heatmap cell colors — 5 buckets ramping from subtle (no activity)
+	   up through accent saturation. Built off --ls-accent / --ls-subtle
+	   so cream / dark theming works without per-bucket overrides. */
+	.ls-heat-0 {
+		fill: rgb(var(--ls-subtle));
+	}
+	.ls-heat-1 {
+		fill: color-mix(in srgb, rgb(var(--ls-accent)) 18%, transparent);
+	}
+	.ls-heat-2 {
+		fill: color-mix(in srgb, rgb(var(--ls-accent)) 40%, transparent);
+	}
+	.ls-heat-3 {
+		fill: color-mix(in srgb, rgb(var(--ls-accent)) 70%, transparent);
+	}
+	.ls-heat-4 {
+		fill: rgb(var(--ls-accent));
 	}
 }
