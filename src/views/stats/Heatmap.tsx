@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 
 import type { ReviewLogEntry } from "../../cards/review-log";
 import { heatmapBuckets, type HeatmapCell } from "./aggregations";
@@ -61,10 +61,18 @@ interface Props {
 	loading: boolean;
 }
 
+interface Tooltip {
+	cell: HeatmapCell;
+	/** Pixels relative to the containing <section>. */
+	x: number;
+	y: number;
+}
+
 export function Heatmap({ entries, loading }: Props) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [width, setWidth] = useState(0);
 	const [forceFullYear, setForceFullYear] = useState(false);
+	const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
 	useLayoutEffect(() => {
 		const el = containerRef.current;
@@ -104,8 +112,38 @@ export function Heatmap({ entries, loading }: Props) {
 	const svgWidth = weeks * cellSize;
 	const svgHeight = 7 * cellSize;
 
+	// Single pointer-move handler on the SVG: hit-test which cell the
+	// cursor is over by dividing the local x/y by cellSize. Avoids
+	// per-rect listeners (cleaner) and inter-cell flicker from the 1px
+	// CELL_GAP (the 1px sliver between rects would otherwise count as
+	// "leave" → tooltip dismounts → re-mounts when entering the next).
+	const onSvgPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+		const svgRect = e.currentTarget.getBoundingClientRect();
+		const container = containerRef.current?.getBoundingClientRect();
+		if (!container) return;
+		const localX = e.clientX - svgRect.left;
+		const localY = e.clientY - svgRect.top;
+		const col = Math.floor(localX / cellSize);
+		const row = Math.floor(localY / cellSize);
+		if (col < 0 || col >= weeks || row < 0 || row >= 7) {
+			if (tooltip) setTooltip(null);
+			return;
+		}
+		const cell = grid[col]?.[row];
+		if (!cell) {
+			if (tooltip) setTooltip(null);
+			return;
+		}
+		if (tooltip && tooltip.cell === cell) return; // no-op same cell
+		setTooltip({
+			cell,
+			x: svgRect.left - container.left + col * cellSize + cellSize / 2,
+			y: svgRect.top - container.top + row * cellSize,
+		});
+	};
+
 	return (
-		<section ref={containerRef} className="flex flex-col gap-2">
+		<section ref={containerRef} className="relative flex flex-col gap-2">
 			<header className="flex items-baseline justify-between">
 				<h3 className="m-0 text-xs uppercase tracking-wide text-muted!">
 					Activity · {showHalfYear ? "last 26 weeks" : "last year"}
@@ -130,6 +168,8 @@ export function Heatmap({ entries, loading }: Props) {
 						className="block"
 						role="img"
 						aria-label={`Review activity over the ${showHalfYear ? "last 26 weeks" : "last year"}`}
+						onPointerMove={onSvgPointerMove}
+						onPointerLeave={() => setTooltip(null)}
 					>
 						{grid.map((week, wi) =>
 							week.map((cell, di) => {
@@ -143,16 +183,27 @@ export function Heatmap({ entries, loading }: Props) {
 										height={cellSize - CELL_GAP}
 										rx={1}
 										className={HEAT_CLS[bucketIndex(cell.count)]}
-									>
-										<title>
-											{cell.date} · {cell.count}{" "}
-											{cell.count === 1 ? "review" : "reviews"}
-										</title>
-									</rect>
+									/>
 								);
 							}),
 						)}
 					</svg>
+					{tooltip && (
+						<div
+							// pointer-events-none so the tooltip doesn't intercept
+							// hover events and cause a flicker loop.
+							className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-border bg-subtle px-2 py-1 text-[10px] shadow-sm"
+							style={{ left: tooltip.x, top: tooltip.y - 4 }}
+						>
+							<div className="font-medium text-fg">
+								{formatHeatmapDate(tooltip.cell.date)}
+							</div>
+							<div className="text-muted!">
+								{tooltip.cell.count}{" "}
+								{tooltip.cell.count === 1 ? "review" : "reviews"}
+							</div>
+						</div>
+					)}
 					{wouldOverflow && (
 						<button
 							type="button"
@@ -166,6 +217,26 @@ export function Heatmap({ entries, loading }: Props) {
 			)}
 		</section>
 	);
+}
+
+/**
+ * "2026-05-20" → "Wed, May 20, 2026" (locale-dependent). Parses the
+ * YYYY-MM-DD as local-zone explicitly — passing the raw string to
+ * `new Date()` treats it as UTC midnight and shifts a day west of UTC.
+ */
+function formatHeatmapDate(yyyymmdd: string): string {
+	const parts = yyyymmdd.split("-");
+	if (parts.length !== 3) return yyyymmdd;
+	const y = parseInt(parts[0] ?? "", 10);
+	const m = parseInt(parts[1] ?? "", 10);
+	const d = parseInt(parts[2] ?? "", 10);
+	if (!y || !m || !d) return yyyymmdd;
+	return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
 }
 
 function Skeleton() {

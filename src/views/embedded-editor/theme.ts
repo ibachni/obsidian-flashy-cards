@@ -55,9 +55,15 @@ export const themeExtension = EditorView.theme({
 	".cm-em": {
 		fontStyle: "italic",
 	},
+	// `color` is set explicitly because Obsidian's own `.cm-inline-code`
+	// rule paints `color: var(--code-normal)` (a muted token in some
+	// themes) and inherited `--ls-fg-strong` loses the cascade against
+	// it. Without this, inline code reads as washed-out cream-on-cream
+	// in light mode.
 	".cm-inline-code": {
 		fontFamily: "var(--font-monospace, monospace)",
 		backgroundColor: "rgb(var(--ls-subtle))",
+		color: "var(--ls-fg-strong)",
 		borderRadius: "0.2em",
 		padding: "0 0.25em",
 		fontSize: "0.9em",

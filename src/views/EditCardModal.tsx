@@ -204,9 +204,14 @@ export function EditCardModal({
 
 	const slug = card.path.split("/").pop() ?? card.path;
 
+	// Layout: pin the header and the action row, let the middle region
+	// (fields) absorb overflow. Without this, the resizable Q/A editors
+	// can push the Save/Cancel buttons past the modal's max-height and
+	// out of the viewport. `min-h-0` on the scroller is required so flex
+	// actually honors `overflow-y: auto` instead of expanding to content.
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="flex flex-col gap-0.5">
+		<div className="flex flex-col gap-4 max-h-[85vh]">
+			<div className="flex flex-col gap-0.5 shrink-0">
 				<h2 className="text-base font-medium text-fg-strong! m-0">
 					Edit card
 				</h2>
@@ -222,51 +227,53 @@ export function EditCardModal({
 				</p>
 			</div>
 
-			<Field label="Topic">
-				<TopicCombobox
-					value={topic}
-					onChange={setTopic}
-					allTopics={allTopics}
-					placeholder="dns"
+			<div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto pr-1">
+				<Field label="Topic">
+					<TopicCombobox
+						value={topic}
+						onChange={setTopic}
+						allTopics={allTopics}
+						placeholder="dns"
+					/>
+				</Field>
+
+				<Field label="Section" optional>
+					<input
+						type="text"
+						value={section}
+						onChange={(e) => setSection(e.target.value)}
+						className={INPUT_CLASS}
+						placeholder="foundations"
+					/>
+				</Field>
+
+				<Field label="Tags" optional>
+					<TagCombobox
+						allTags={allTags}
+						selected={tags}
+						onChange={setTags}
+						placeholder="Add tag…"
+						allowCreate
+					/>
+				</Field>
+
+				<MarkdownField
+					ref={questionRef}
+					label="Question"
+					value={question}
+					onChange={setQuestion}
+					onSubmit={() => void onSave()}
 				/>
-			</Field>
 
-			<Field label="Section" optional>
-				<input
-					type="text"
-					value={section}
-					onChange={(e) => setSection(e.target.value)}
-					className={INPUT_CLASS}
-					placeholder="foundations"
+				<MarkdownField
+					label="Answer"
+					value={answer}
+					onChange={setAnswer}
+					onSubmit={() => void onSave()}
 				/>
-			</Field>
+			</div>
 
-			<Field label="Tags" optional>
-				<TagCombobox
-					allTags={allTags}
-					selected={tags}
-					onChange={setTags}
-					placeholder="Add tag…"
-					allowCreate
-				/>
-			</Field>
-
-			<MarkdownField
-				ref={questionRef}
-				label="Question"
-				value={question}
-				onChange={setQuestion}
-				onSubmit={() => void onSave()}
-			/>
-
-			<MarkdownField
-				label="Answer"
-				value={answer}
-				onChange={setAnswer}
-				onSubmit={() => void onSave()}
-			/>
-
-			<div className="flex justify-end gap-2">
+			<div className="flex justify-end gap-2 shrink-0">
 				<button
 					type="button"
 					className="rounded px-3 py-1 text-sm"

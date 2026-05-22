@@ -32,6 +32,21 @@ export function parseDueDate(s: string): Date {
 }
 
 /**
+ * Human-friendly rendering of an `fsrs_due` date for footer/meta strips.
+ * Drops the year when it matches the current year (most common case),
+ * so the date reads as "Apr 28" rather than "Apr 28, 2026" — quieter
+ * for the eye when surrounded by other meta.
+ */
+export function formatDueShort(iso: string, now: Date = new Date()): string {
+	const d = parseDueDate(iso);
+	const opts: Intl.DateTimeFormatOptions =
+		d.getFullYear() === now.getFullYear()
+			? { month: "short", day: "numeric" }
+			: { month: "short", day: "numeric", year: "numeric" };
+	return d.toLocaleDateString(undefined, opts);
+}
+
+/**
  * Compact relative-time delta — used in the empty-state of the Review
  * pane and in any future "next due" ticker. Output examples: `5m`,
  * `2h 13m`, `1d 4h`.

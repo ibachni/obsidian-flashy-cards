@@ -5,6 +5,7 @@ import {
 	readAll,
 	readMonth,
 	readRecent,
+	truncateLastEntry,
 	type ReviewLogEntry,
 } from "./review-log";
 
@@ -237,5 +238,108 @@ describe("readAll", () => {
 	it("returns [] when history directory is missing", async () => {
 		const { app } = makeApp();
 		expect(await readAll(app, ROOT)).toEqual([]);
+	});
+});
+
+describe("truncateLastEntry", () => {
+	it("drops the matching last entry from a multi-line file", async () => {
+		const { app, files } = makeApp();
+		const e1 = entry({ date: "2026-05-10", grade: 1 });
+		const e2 = entry({ date: "2026-05-15", grade: 2 });
+		const e3 = entry({ date: "2026-05-20", grade: 3 });
+		await appendGrade(app, ROOT, e1);
+		await appendGrade(app, ROOT, e2);
+		await appendGrade(app, ROOT, e3);
+		const ok = await truncateLastEntry(app, ROOT, {
+			path: e3.path,
+			date: e3.date,
+		});
+		expect(ok).toBe(true);
+		const content = files.get("Cards/.learning-system/history/2026-05.jsonl");
+		const lines = content!.split("\n").filter(Boolean);
+		expect(lines).toHaveLength(2);
+		expect(JSON.parse(lines[1]!)).toEqual(e2);
+	});
+
+	it("aborts and warns when the last line does not match expected", async () => {
+		const { app, files } = makeApp();
+		const e1 = entry({ date: "2026-05-10", path: "Cards/a.md" });
+		const e2 = entry({ date: "2026-05-11", path: "Cards/b.md" });
+		await appendGrade(app, ROOT, e1);
+		await appendGrade(app, ROOT, e2);
+		const before = files.get("Cards/.learning-system/history/2026-05.jsonl");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const ok = await truncateLastEntry(app, ROOT, {
+				path: "Cards/different.md",
+				date: e2.date,
+			});
+			expect(ok).toBe(false);
+			expect(warn).toHaveBeenCalledTimes(1);
+		} finally {
+			warn.mockRestore();
+		}
+		const after = files.get("Cards/.learning-system/history/2026-05.jsonl");
+		expect(after).toBe(before);
+	});
+
+	it("empties the file when truncating a single-entry file", async () => {
+		const { app, files } = makeApp();
+		const e = entry({ date: "2026-05-10" });
+		await appendGrade(app, ROOT, e);
+		const ok = await truncateLastEntry(app, ROOT, {
+			path: e.path,
+			date: e.date,
+		});
+		expect(ok).toBe(true);
+		expect(files.get("Cards/.learning-system/history/2026-05.jsonl")).toBe("");
+	});
+
+	it("is a no-op when the file is missing", async () => {
+		const { app } = makeApp();
+		const ok = await truncateLastEntry(app, ROOT, {
+			path: "Cards/anything.md",
+			date: "2026-05-10",
+		});
+		expect(ok).toBe(false);
+	});
+
+	it("handles CRLF line endings", async () => {
+		const { app, files, folders } = makeApp();
+		folders.add("Cards/.learning-system");
+		folders.add("Cards/.learning-system/history");
+		const e1 = entry({ date: "2026-05-10", path: "Cards/a.md" });
+		const e2 = entry({ date: "2026-05-15", path: "Cards/b.md" });
+		const content =
+			JSON.stringify(e1) + "\r\n" + JSON.stringify(e2) + "\r\n";
+		files.set("Cards/.learning-system/history/2026-05.jsonl", content);
+		const ok = await truncateLastEntry(app, ROOT, {
+			path: e2.path,
+			date: e2.date,
+		});
+		expect(ok).toBe(true);
+		const after = files.get("Cards/.learning-system/history/2026-05.jsonl");
+		// The remaining entry stays; trailing newline preserved so the
+		// next append lands cleanly.
+		expect(after).toBe(JSON.stringify(e1) + "\n");
+	});
+
+	it("tolerates trailing blank lines after the target entry", async () => {
+		const { app, files, folders } = makeApp();
+		folders.add("Cards/.learning-system");
+		folders.add("Cards/.learning-system/history");
+		const e1 = entry({ date: "2026-05-10", path: "Cards/a.md" });
+		const e2 = entry({ date: "2026-05-15", path: "Cards/b.md" });
+		files.set(
+			"Cards/.learning-system/history/2026-05.jsonl",
+			JSON.stringify(e1) + "\n" + JSON.stringify(e2) + "\n\n",
+		);
+		const ok = await truncateLastEntry(app, ROOT, {
+			path: e2.path,
+			date: e2.date,
+		});
+		expect(ok).toBe(true);
+		const after = files.get("Cards/.learning-system/history/2026-05.jsonl");
+		expect(after).toBe(JSON.stringify(e1) + "\n");
 	});
 });

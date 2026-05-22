@@ -115,6 +115,42 @@
 }
 
 /*
+ * Modal-box surface — applied to the outer `.modal` element of our
+ * Modal hosts (edit-card, delete-confirm). Without this, Obsidian's
+ * default `.modal` background paints a halo around our cream
+ * `learning-system-pane` content. We also clamp the modal's height to
+ * the viewport so a tall form can't push the action row off-screen;
+ * the form itself owns scrolling for the middle (fields) region.
+ *
+ * `!important` is required because Obsidian's `.modal` rule is
+ * unlayered and beats layered utilities. See the "Why `!`" comment
+ * below for the cascade rationale.
+ */
+.ls-modal-surface {
+	background-color: var(--ls-bg) !important;
+	color: var(--ls-fg) !important;
+	max-height: 90vh;
+}
+
+/*
+ * Main-view shell. Absolute positioning gives the React tree a
+ * known-size containing block — `height: 100%` doesn't resolve because
+ * `.learning-system-pane` declares only `min-height: 100%`. Applied
+ * to the view's contentEl, not modals.
+ */
+.learning-system-shell {
+	position: relative;
+	overflow: hidden;
+}
+
+.ls-app-shell {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/*
  * Map our scoped CSS variables into Tailwind v4 theme tokens.
  * This generates utilities like `bg-bg`, `text-fg`, `border-accent`, etc.,
  * which resolve to the runtime values of --ls-* on .learning-system-root.

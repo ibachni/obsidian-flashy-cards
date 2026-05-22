@@ -34,28 +34,59 @@ interface Props {
  */
 export function UnifiedPane({ mode, mountedModes, onSetMode }: Props) {
 	return (
-		<div className="flex flex-col gap-4 px-6 pt-3 pb-6">
-			<header className="flex flex-col items-center gap-2">
+		<div className="flex h-full flex-col gap-4 px-6 pt-3 pb-6">
+			{/* Extra `mb-4` (on top of parent `gap-4`) separates the app
+			    shell from the active pane's metadata. */}
+			<header className="mb-4 flex shrink-0 flex-col items-center gap-2">
 				<h1 className="ls-brand m-0">Learning System</h1>
 				<ModeNav active={mode} onChange={onSetMode} />
 			</header>
+			{/* Conditional className (not the `hidden` attribute): UA
+			    `[hidden] { display: none }` loses to a sibling `display:
+			    flex` Tailwind class. Tailwind's `.hidden` utility wins
+			    instead. Review scrolls internally; other panes scroll as
+			    a block. */}
 			{mountedModes.has("review") && (
-				<div hidden={mode !== "review"}>
+				<div
+					className={
+						mode === "review"
+							? "flex min-h-0 flex-1 flex-col"
+							: "hidden"
+					}
+				>
 					<ReviewPane />
 				</div>
 			)}
 			{mountedModes.has("browse") && (
-				<div hidden={mode !== "browse"}>
+				<div
+					className={
+						mode === "browse"
+							? "min-h-0 flex-1 overflow-y-auto"
+							: "hidden"
+					}
+				>
 					<BrowsePane onSwitchToReview={() => onSetMode("review")} />
 				</div>
 			)}
 			{mountedModes.has("create") && (
-				<div hidden={mode !== "create"}>
+				<div
+					className={
+						mode === "create"
+							? "min-h-0 flex-1 overflow-y-auto"
+							: "hidden"
+					}
+				>
 					<NewCardPane active={mode === "create"} />
 				</div>
 			)}
 			{mountedModes.has("stats") && (
-				<div hidden={mode !== "stats"}>
+				<div
+					className={
+						mode === "stats"
+							? "min-h-0 flex-1 overflow-y-auto"
+							: "hidden"
+					}
+				>
 					<StatsPane />
 				</div>
 			)}

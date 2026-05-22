@@ -20,12 +20,12 @@ export function StatsPane() {
 
 	return (
 		<div className="flex flex-col gap-6">
+			<Heatmap entries={entries} loading={loading} />
 			<StateBreakdown />
 			<Forecast />
 			<RetentionRate entries={entries} loading={loading} />
 			<Streak entries={entries} loading={loading} />
 			<PerTopicRetention entries={entries} loading={loading} />
-			<Heatmap entries={entries} loading={loading} />
 		</div>
 	);
 }

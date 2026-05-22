@@ -17,8 +17,19 @@ import { seedDemoLog } from "./cards/demo-seed";
 import type { ParsedCard } from "./cards/parser";
 import { parseCardFile, scanCards } from "./cards/parser";
 import { pickNext } from "./cards/picker";
-import { appendGrade, type ReviewLogEntry } from "./cards/review-log";
+import {
+	appendGrade,
+	truncateLastEntry,
+	type ReviewLogEntry,
+} from "./cards/review-log";
 import { useCardStore } from "./cards/store";
+import {
+	createSlot,
+	stashGrade,
+	takeGrade,
+	type UndoEntry,
+	type UndoSlot,
+} from "./cards/undo-buffer";
 import type { CardFrontmatterT } from "./schema/card";
 import {
 	gradeWith,
@@ -32,6 +43,22 @@ import { EditCardModal } from "./views/EditCardModal";
 import type { Mode } from "./views/ModeNav";
 import { PluginContextProvider } from "./views/PluginContext";
 import { UnifiedPane } from "./views/UnifiedPane";
+
+/**
+ * Imperative handle the Review pane registers on the plugin while it's
+ * the active mode. Lets the plugin's document-level keydown listener
+ * call into live React state (revealed, current card) without coupling
+ * the listener to the pane's component tree. Cleared on unmount.
+ *
+ * Same shape as `confirmClose` on the edit modal — a known-good pattern
+ * in this codebase for bridging Obsidian-level events to React state.
+ */
+export interface ReviewActions {
+	reveal: () => void;
+	grade: (rating: Grade) => void;
+	isRevealed: () => boolean;
+	openSource: () => void;
+}
 
 export const VIEW_TYPE_LEARNING = "learning-system-view";
 // String literals (not exported constants) — these refer to defunct view
@@ -59,6 +86,26 @@ const DEFAULT_SETTINGS: LearningSystemSettings = {
 	fsrsMaximumInterval: 36500,
 	claudianHoldingFile: "_handoff_learning.md",
 };
+
+/**
+ * Map a number-row key ("1"–"4") to an FSRS grade. Kept as a switch so
+ * the call site reads as a one-liner without a Record lookup that would
+ * widen the index to `string`. Caller is responsible for the key range.
+ */
+function keyToRating(key: string): Grade {
+	switch (key) {
+		case "1":
+			return Rating.Again;
+		case "2":
+			return Rating.Hard;
+		case "3":
+			return Rating.Good;
+		case "4":
+			return Rating.Easy;
+		default:
+			return Rating.Good;
+	}
+}
 
 function parseModeFromState(state: unknown): Mode | null {
 	if (!state || typeof state !== "object") return null;
@@ -126,6 +173,15 @@ class LearningSystemView extends ItemView {
 		this.renderRoot();
 	}
 
+	/**
+	 * Public mode accessor — paired with `setMode` so callers (the
+	 * plugin's document-level keydown listener) can read the active mode
+	 * without reaching into a private field. Same shape as `setMode`.
+	 */
+	getMode(): Mode {
+		return this.mode;
+	}
+
 	// Bound once so renderRoot passes a stable identity to React. Without
 	// this, every renderRoot call would hand <UnifiedPane> a fresh arrow
 	// and any future React.memo on ModeNav / its children would be moot.
@@ -144,11 +200,14 @@ class LearningSystemView extends ItemView {
 		this.contentEl.empty();
 		this.contentEl.addClass("learning-system-root");
 		this.contentEl.addClass("learning-system-pane");
+		// Fixed-size shell for the React tree's internal scrolling.
+		// Skipped on modals — they size to content.
+		this.contentEl.addClass("learning-system-shell");
 
 		// React mounts on a child div so contentEl keeps the wrapper class
 		// even if React replaces its own root. Theme variables cascade
 		// from contentEl into the React subtree.
-		const mountEl = this.contentEl.createDiv();
+		const mountEl = this.contentEl.createDiv({ cls: "ls-app-shell" });
 		this.root = createRoot(mountEl);
 		this.renderRoot();
 	}
@@ -385,8 +444,14 @@ class LearningSystemEditCardModal extends Modal {
 	}
 
 	onOpen(): void {
-		const { contentEl } = this;
+		const { contentEl, modalEl } = this;
 		contentEl.empty();
+		// Paint the entire modal box (not just the inner content) with our
+		// theme variables and surface color. Otherwise Obsidian's default
+		// `.modal` background bleeds around the cream content as a halo —
+		// the "outer ring different color than inner" complaint.
+		modalEl.addClass("learning-system-root");
+		modalEl.addClass("ls-modal-surface");
 		contentEl.addClass("learning-system-root");
 		contentEl.addClass("learning-system-pane");
 		// Apply current theme — Obsidian's Modal sits outside the
@@ -395,6 +460,7 @@ class LearningSystemEditCardModal extends Modal {
 			this.plugin.settings.theme === "dark" ||
 			(this.plugin.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
+		modalEl.toggleClass("dark", isDark);
 		contentEl.toggleClass("dark", isDark);
 
 		const mountEl = contentEl.createDiv();
@@ -469,14 +535,17 @@ class LearningSystemDeleteCardConfirm extends Modal {
 	}
 
 	onOpen(): void {
-		const { contentEl } = this;
+		const { contentEl, modalEl } = this;
 		contentEl.empty();
+		modalEl.addClass("learning-system-root");
+		modalEl.addClass("ls-modal-surface");
 		contentEl.addClass("learning-system-root");
 		contentEl.addClass("learning-system-pane");
 		const isDark =
 			this.plugin.settings.theme === "dark" ||
 			(this.plugin.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
+		modalEl.toggleClass("dark", isDark);
 		contentEl.toggleClass("dark", isDark);
 
 		const mountEl = contentEl.createDiv();
@@ -508,6 +577,22 @@ class LearningSystemDeleteCardConfirm extends Modal {
 export default class LearningSystemPlugin extends Plugin {
 	settings: LearningSystemSettings = DEFAULT_SETTINGS;
 	private fsrsEngine: FSRS = makeEngine();
+	// One-slot in-memory undo buffer. Populated by gradeAndPersist after a
+	// successful FSRS write; consumed by undoLastGrade. Cleared after a
+	// successful undo. Lives on the plugin so it survives Review-pane
+	// re-mounts (sticky-mount keeps the pane around, but a future
+	// remount-on-mode-switch shouldn't drop the buffer).
+	undoSlot: UndoSlot = createSlot();
+	// Subscribers re-render when the slot toggles between filled/empty.
+	// Field lives here in Phase 2 (with firing wired in); Phase 3's
+	// Review-pane footer is the first subscriber. Set rather than array
+	// so duplicate subscribe is a no-op and unsubscribe is O(1).
+	undoSlotListeners: Set<() => void> = new Set();
+	// Set by ReviewPane's useEffect while it's the active mode; cleared
+	// on unmount. The keydown listener checks this before dispatching —
+	// `null` means the pane hasn't registered (e.g. on Browse) and the
+	// keydown is a no-op for keys that need pane state.
+	reviewActions: ReviewActions | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -636,6 +721,75 @@ export default class LearningSystemPlugin extends Plugin {
 			this.toggleTheme();
 		});
 
+		// Review-pane keyboard bindings: Space/Enter reveal, 1-4 grade,
+		// e opens source, u undoes. Gated to Review mode + our pane focus,
+		// so typing in the Browse tag-filter combobox or the Create
+		// editor doesn't trip the grades. Same locality model as the `d`
+		// theme toggle above. Plugin-level (not pane-local) per
+		// docs/features/keyboard-and-undo.md → Keyboard listener placement.
+		this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+			const target = e.target as HTMLElement | null;
+			if (
+				target instanceof HTMLElement &&
+				(target.tagName === "INPUT" ||
+					target.tagName === "TEXTAREA" ||
+					target.isContentEditable)
+			) {
+				return;
+			}
+
+			// Bail when focus is inside an Obsidian modal. The Edit /
+			// Delete modals' contentEl carries `learning-system-pane`
+			// for theme cascade, so the inPane check below would
+			// otherwise match a focused Save/Cancel button and steal
+			// Enter from the modal. `.modal` is Obsidian's wrapper class.
+			if (target?.closest?.(".modal")) return;
+
+			const inPane = !!target?.closest?.(".learning-system-pane");
+			const activeView =
+				this.app.workspace.getActiveViewOfType(LearningSystemView);
+			if (!inPane && !activeView) return;
+
+			// Mode gate: only fire on Review. Without this, pressing `1`
+			// in Browse / Create / Stats would still attempt to grade.
+			if (activeView?.getMode() !== "review") return;
+
+			const actions = this.reviewActions;
+			if (!actions) return;
+
+			switch (e.key) {
+				case " ":
+				case "Enter":
+					if (!actions.isRevealed()) {
+						// preventDefault keeps Space from scrolling the
+						// pane and Enter from activating the currently-
+						// focused button.
+						e.preventDefault();
+						actions.reveal();
+					}
+					break;
+				case "1":
+				case "2":
+				case "3":
+				case "4":
+					if (actions.isRevealed()) {
+						e.preventDefault();
+						actions.grade(keyToRating(e.key));
+					}
+					break;
+				case "e":
+					e.preventDefault();
+					actions.openSource();
+					break;
+				case "u":
+					e.preventDefault();
+					void this.undoLastGrade();
+					break;
+			}
+		});
+
 		// Grade-via-command-palette commands. Kept after M5 since they're
 		// keyboard-accessible alternatives to the UI buttons.
 		this.addCommand({
@@ -657,6 +811,19 @@ export default class LearningSystemPlugin extends Plugin {
 			id: "grade-next-easy",
 			name: "Grade next due card: Easy",
 			callback: () => void this.gradeNextDue(Rating.Easy),
+		});
+
+		// Hidden when the undo slot is empty so the palette doesn't
+		// surface an action with no target. checkCallback reads the slot
+		// directly — no listener plumbing needed for the palette.
+		this.addCommand({
+			id: "undo-last-grade",
+			name: "Undo last grade",
+			checkCallback: (checking) => {
+				if (this.undoSlot.entry === null) return false;
+				if (!checking) void this.undoLastGrade();
+				return true;
+			},
 		});
 
 		this.addSettingTab(new LearningSystemSettingTab(this.app, this));
@@ -929,6 +1096,10 @@ export default class LearningSystemPlugin extends Plugin {
 		// the on-disk frontmatter — the log entry needs to record where
 		// the card was *coming from*, not where it ends up.
 		const prevState = card.fm.fsrs_state;
+		// structuredClone so future schema additions flow through without
+		// revisiting; the snapshot must be a deep copy because the FSRS
+		// update mutates fm in place via processFrontMatter.
+		const previousFmSnapshot = structuredClone(card.fm);
 		const update = gradeWith(this.fsrsEngine, card.fm, rating, now);
 
 		const modified = now.toISOString().slice(0, 10);
@@ -940,6 +1111,16 @@ export default class LearningSystemPlugin extends Plugin {
 			const fm = raw as Record<string, unknown>;
 			Object.assign(fm, update, { modified });
 		});
+
+		// Stash for undo only after the FSRS write succeeded — a failed
+		// processFrontMatter must not leave a snapshot that would roll
+		// back a grade that never landed.
+		stashGrade(this.undoSlot, {
+			path: card.path,
+			previousFm: previousFmSnapshot,
+			logDate: modified,
+		});
+		this.notifyUndoSlotChanged();
 
 		// Optimistic store update: processFrontMatter persists, but the
 		// metadataCache "changed" event that refreshes the Zustand store
@@ -965,6 +1146,102 @@ export default class LearningSystemPlugin extends Plugin {
 		} catch (e) {
 			console.error("[learning-system] review-log append failed:", e);
 		}
+	}
+
+	/**
+	 * Fire every undo-slot listener. Listeners are invoked synchronously;
+	 * a throw from one shouldn't strand the rest, so each is wrapped.
+	 */
+	private notifyUndoSlotChanged(): void {
+		for (const fn of this.undoSlotListeners) {
+			try {
+				fn();
+			} catch (e) {
+				console.error("[learning-system] undoSlot listener threw:", e);
+			}
+		}
+	}
+
+	/**
+	 * Roll the last grade back: restore the card's pre-grade frontmatter,
+	 * push the rollback into the Zustand store, and truncate the matching
+	 * log entry so Stats stays consistent. Best-effort log truncation —
+	 * an unrelated last line aborts the truncate but the FM restore still
+	 * runs. The slot is cleared regardless of which branch returns, so a
+	 * second `u` is always a no-op.
+	 */
+	async undoLastGrade(): Promise<void> {
+		const entry: UndoEntry | null = takeGrade(this.undoSlot);
+		if (!entry) {
+			new Notice("Nothing to undo");
+			return;
+		}
+		// Slot just toggled filled → empty; notify before any await so
+		// the footer re-renders immediately. A subscriber's handler
+		// must be cheap (a setState/forceUpdate) — anything heavier is
+		// the subscriber's bug, not ours.
+		this.notifyUndoSlotChanged();
+
+		const file = this.app.vault.getAbstractFileByPath(entry.path);
+		if (!(file instanceof TFile)) {
+			new Notice("Card no longer exists; cannot undo");
+			// Still truncate the log so Stats doesn't drift — the user
+			// removed the card but the grade entry shouldn't outlive it.
+			try {
+				await truncateLastEntry(
+					this.app,
+					this.normalizedCardsRoot(),
+					{ path: entry.path, date: entry.logDate },
+				);
+			} catch (e) {
+				console.error("[learning-system] undo log truncation failed:", e);
+			}
+			return;
+		}
+
+		try {
+			await this.app.fileManager.processFrontMatter(file, (raw) => {
+				const fm = raw as Record<string, unknown>;
+				// Only overwrites keys present in previousFm. Keys the user
+				// added mid-window survive; keys they removed aren't re-added.
+				// Same trade-off the grade path has.
+				Object.assign(fm, entry.previousFm);
+			});
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			console.error("[learning-system] undo frontmatter restore failed:", e);
+			new Notice(`Undo failed: ${msg}`);
+			return;
+		}
+
+		// Optimistic store update — same reasoning as gradeAndPersist:
+		// metadataCache.changed lands a tick later, and without this push
+		// pickNext briefly re-renders the post-grade state.
+		const current = useCardStore.getState().cardsByPath.get(entry.path);
+		if (current) {
+			useCardStore
+				.getState()
+				.setCard({ ...current, fm: entry.previousFm });
+		}
+
+		// Best-effort log truncation. Mismatch / missing-file return
+		// `false` and stay silent (truncateLastEntry already console.warn's
+		// on mismatch) — same trade-off as the multi-device sync race.
+		// Thrown errors are different: surface a Notice so the user knows
+		// Stats may be one entry stale.
+		try {
+			await truncateLastEntry(
+				this.app,
+				this.normalizedCardsRoot(),
+				{ path: entry.path, date: entry.logDate },
+			);
+		} catch (e) {
+			console.error("[learning-system] undo log truncation failed:", e);
+			new Notice("Undo applied; log rollback failed");
+		}
+
+		const slug = entry.path.split("/").pop() ?? entry.path;
+		new Notice(`Undo: ${slug}`);
 	}
 
 	async gradeNextDue(rating: Grade): Promise<void> {

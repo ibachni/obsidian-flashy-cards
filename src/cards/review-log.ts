@@ -142,6 +142,67 @@ export async function readAll(
 	return out;
 }
 
+/**
+ * Truncate the last entry of the newest month file when it matches
+ * `expected`. Used by the undo flow to keep Stats consistent with the
+ * frontmatter rollback. If the last line is a different entry (sync
+ * race, concurrent grade), the file is left unchanged and the function
+ * returns `false` — callers can surface a Notice that the log may be
+ * one entry stale. Returns `false` (no throw) if the file is missing
+ * or empty so a missing-log adapter doesn't block undo.
+ */
+export async function truncateLastEntry(
+	app: App,
+	cardsRoot: string,
+	expected: { path: string; date: string },
+): Promise<boolean> {
+	const adapter = app.vault.adapter;
+	const path = monthFile(cardsRoot, ymOf(expected.date));
+	if (!(await adapter.exists(path))) return false;
+
+	const content = await adapter.read(path);
+	// Split on \n, then strip a trailing \r from each piece — handles
+	// both LF and CRLF line endings without parsing twice.
+	const lines = content.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+
+	let lastIdx = -1;
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i];
+		if (line && line.trim()) {
+			lastIdx = i;
+			break;
+		}
+	}
+	if (lastIdx === -1) return false;
+
+	let parsed: ReviewLogEntry;
+	try {
+		parsed = JSON.parse(lines[lastIdx]!) as ReviewLogEntry;
+	} catch {
+		console.warn(
+			`[learning-system] review-log: truncate aborted — last line of ${path} is malformed`,
+		);
+		return false;
+	}
+
+	if (parsed.path !== expected.path || parsed.date !== expected.date) {
+		console.warn(
+			`[learning-system] review-log: truncate aborted — last entry of ${path} does not match expected (${expected.path} ${expected.date})`,
+		);
+		return false;
+	}
+
+	// Drop the matched line; keep any blank lines that preceded it so
+	// the surrounding format stays identical to what readMonth tolerates.
+	const next = lines.slice(0, lastIdx).join("\n");
+	// If anything remains, end with a newline so the next append lands
+	// on its own line. Empty file → empty string (next append re-creates
+	// the trailing newline pattern via the write/append branch).
+	const out = next.length > 0 && !next.endsWith("\n") ? next + "\n" : next;
+	await adapter.write(path, out);
+	return true;
+}
+
 async function listMonths(app: App, cardsRoot: string): Promise<string[]> {
 	const dir = historyDir(cardsRoot);
 	const adapter = app.vault.adapter;
