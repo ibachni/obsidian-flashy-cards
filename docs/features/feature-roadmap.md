@@ -17,22 +17,16 @@ These are the things a user runs into within the first hour of real use. Without
 **Shipped** — see [delete-card.md](./delete-card.md). Trash icon on each Browse row, "Delete" button in the Review footer, and the `learning-system:delete-current-card` command open a confirm modal that runs `app.vault.trash(file, true)` (system trash, recoverable). Optimistic `removeCard` so Browse/Review re-render in the same tick; prunes the path from `reviewScope` if a scoped session is active.
 
 ### 3. Undo last grade
-Single-step undo is enough. After every grade, stash `{ path, previousFm }` in a one-slot ring buffer. A keyboard shortcut (e.g. `u` or `cmd+z` while Review is focused) and a small "Undo" link in the footer restores the prior FSRS state. Critical for fat-finger mistakes — the most-requested Anki feature.
+**Shipped** — see [keyboard-and-undo.md](./keyboard-and-undo.md). One-slot ring buffer (`undoSlot` on the plugin) populated by `gradeAndPersist` after a successful FSRS write; `undoLastGrade` re-applies the prior frontmatter via `processFrontMatter`. Surfaced as the `u` keybind and an Undo icon in the Review footer; the icon's enabled/disabled state tracks the buffer via a pub-sub `undoSlotListeners` set so it reflects live state without prop drilling.
 
 ### 4. Show projected intervals on grade buttons
-Each button currently reads just "Again / Hard / Good / Easy". Display the next interval beneath the label — e.g. `Good · 4d`, `Easy · 11d`. The FSRS engine already computes these for the `gradeWith` call; surface them at render time. Hugely improves calibration intuition.
+**Shipped** — see [previewIntervals](../../src/srs/fsrs-engine.ts) and [formatInterval](../../src/views/date-utils.ts). One `engine.repeat` call yields all four candidate due dates without mutating the card; the formatter picks a single dominant unit (`1m` / `4h` / `4d` / `2mo` / `1y`, floored at 1m for fuzz-jittered learning steps). Rendered as a smaller mono/tabular second line under each grade-button label, memoized per visible card so fuzzed values don't re-jitter on render ticks.
 
 ### 5. Keyboard-first Review pane
-- `Space` (or `Enter`) reveals the answer.
-- `1` / `2` / `3` / `4` grade Again / Hard / Good / Easy when revealed.
-- `e` opens the card source.
-- `u` undoes the previous grade.
-- `s` suspends (see P1).
-
-Today only the command-palette `grade-next-*` commands work, which requires both hands and breaks the rhythm of a long review session.
+**Shipped** — see [keyboard-and-undo.md](./keyboard-and-undo.md). Document-level keydown listener on the plugin dispatches via `plugin.reviewActions`, which `ReviewPane` registers on mount and clears on unmount: `Space`/`Enter` reveal, `1`–`4` grade Again/Hard/Good/Easy when revealed, `e` open source, `u` undo. A `HotkeyHint` row in the Review footer surfaces the bindings inline. Still TODO: `s` suspend (depends on #13).
 
 ### 6. Open card source from Review
-A small "Open file" link in the Review footer (next to `current.fm.topic · section · due …`). One-click jump to the .md when the user spots a typo or wants context mid-review.
+**Shipped** as part of #5 — `e` invokes `app.workspace.openLinkText(current.path, "", false)` to reuse the active leaf, same primitive Browse uses for row-click. Affordance is the keybind row in the footer rather than a separate "Open file" link; can promote to a click target later if heavy-use friction shows up.
 
 ---
 
