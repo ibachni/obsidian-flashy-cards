@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { CardFrontmatterT } from "../schema/card";
-import { gradeWith, makeEngine, Rating, type Grade } from "./fsrs-engine";
+import {
+	gradeWith,
+	makeEngine,
+	previewIntervals,
+	Rating,
+	type Grade,
+} from "./fsrs-engine";
 
 function newCardFm(overrides: Partial<CardFrontmatterT> = {}): CardFrontmatterT {
 	return {
@@ -77,5 +83,62 @@ describe("gradeWith", () => {
 		const hard = gradeWith(engine, fm, Rating.Hard, now);
 		const easy = gradeWith(engine, fm, Rating.Easy, now);
 		expect(easy.fsrs_scheduled_days).toBeGreaterThan(hard.fsrs_scheduled_days);
+	});
+});
+
+describe("previewIntervals", () => {
+	const engine = makeEngine();
+	const now = new Date("2026-04-28T12:00:00Z");
+
+	it("returns Again ≤ Hard ≤ Good ≤ Easy due dates for a review card", () => {
+		// Calibration invariant: harder grades give shorter intervals.
+		// Stable fuzz seeding doesn't matter here — for a mature card the
+		// ordering holds for any reasonable parameter set.
+		const fm = newCardFm({
+			fsrs_state: "review",
+			fsrs_stability: 20,
+			fsrs_difficulty: 5,
+			fsrs_reps: 4,
+			fsrs_due: "2026-04-28",
+			fsrs_last_review: "2026-04-08T12:00:00.000Z",
+		});
+		const dues = previewIntervals(engine, fm, now);
+		expect(dues[Rating.Again].getTime()).toBeLessThanOrEqual(
+			dues[Rating.Hard].getTime(),
+		);
+		expect(dues[Rating.Hard].getTime()).toBeLessThanOrEqual(
+			dues[Rating.Good].getTime(),
+		);
+		expect(dues[Rating.Good].getTime()).toBeLessThanOrEqual(
+			dues[Rating.Easy].getTime(),
+		);
+	});
+
+	it("returns intervals for a new card without mutating it", () => {
+		// The Review pane shows previews the moment a card is revealed,
+		// and `new` is the most common starting state — exercise that
+		// path explicitly so an upstream change to ts-fsrs's new-state
+		// handling can't quietly break us.
+		const fm = newCardFm(); // state: "new"
+		const snapshot = structuredClone(fm);
+		const dues = previewIntervals(engine, fm, now);
+		expect(dues[Rating.Easy].getTime()).toBeGreaterThan(
+			dues[Rating.Again].getTime(),
+		);
+		expect(fm).toEqual(snapshot);
+	});
+
+	it("does not mutate the input frontmatter", () => {
+		// Critical: the preview is rendered every time the Review pane
+		// shows a card. If it accidentally mutated fm we'd corrupt the
+		// in-memory card store before the user actually graded.
+		const fm = newCardFm({
+			fsrs_state: "review",
+			fsrs_stability: 10,
+			fsrs_difficulty: 5,
+		});
+		const snapshot = structuredClone(fm);
+		previewIntervals(engine, fm, now);
+		expect(fm).toEqual(snapshot);
 	});
 });

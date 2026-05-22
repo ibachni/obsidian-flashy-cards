@@ -121,5 +121,29 @@ export function gradeWith(
 	return fromFsrsCard(result.card, now);
 }
 
+/**
+ * Compute the candidate next-due dates for all four ratings without
+ * mutating the card. Powers the projected-interval labels under each
+ * grade button so the user can see calibrate Again vs. Hard vs. Good
+ * vs. Easy before committing.
+ *
+ * One `engine.repeat` call yields all four candidates — cheaper than
+ * four `engine.next` calls and avoids any chance of state drift between
+ * the preview and the eventual grade write.
+ */
+export function previewIntervals(
+	engine: FSRS,
+	fm: CardFrontmatterT,
+	now: Date = new Date(),
+): Record<Grade, Date> {
+	const preview = engine.repeat(toFsrsCard(fm), now);
+	return {
+		[Rating.Again]: preview[Rating.Again].card.due,
+		[Rating.Hard]: preview[Rating.Hard].card.due,
+		[Rating.Good]: preview[Rating.Good].card.due,
+		[Rating.Easy]: preview[Rating.Easy].card.due,
+	};
+}
+
 export { Rating };
 export type { Grade, FSRS };

@@ -47,6 +47,27 @@ export function formatDueShort(iso: string, now: Date = new Date()): string {
 }
 
 /**
+ * Single-unit interval rendering for the projected-interval labels
+ * under each grade button. Picks the dominant unit so labels stay tight
+ * across a row of buttons: `1m`, `10m`, `4h`, `4d`, `2mo`, `1y`.
+ *
+ * Floors at `1m` because fuzzed learning-step intervals can land a few
+ * seconds away from `now` and `0m` reads as broken.
+ */
+export function formatInterval(target: Date, now: Date = new Date()): string {
+	const ms = Math.max(0, target.getTime() - now.getTime());
+	const mins = Math.round(ms / 60_000);
+	if (mins < 60) return `${Math.max(1, mins)}m`;
+	const hours = Math.round(mins / 60);
+	if (hours < 24) return `${hours}h`;
+	const days = Math.round(hours / 24);
+	if (days < 30) return `${days}d`;
+	const months = Math.round(days / 30);
+	if (months < 12) return `${months}mo`;
+	return `${Math.round(days / 365)}y`;
+}
+
+/**
  * Compact relative-time delta — used in the empty-state of the Review
  * pane and in any future "next due" ticker. Output examples: `5m`,
  * `2h 13m`, `1d 4h`.

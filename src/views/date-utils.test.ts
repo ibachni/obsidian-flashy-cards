@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { endOfTodayDate, formatDelta, parseDueDate } from "./date-utils";
+import {
+	endOfTodayDate,
+	formatDelta,
+	formatInterval,
+	parseDueDate,
+} from "./date-utils";
 
 describe("parseDueDate", () => {
 	it("parses a date-only YYYY-MM-DD as local midnight (not UTC)", () => {
@@ -73,5 +78,55 @@ describe("formatDelta", () => {
 	it("clamps negative deltas to 0m", () => {
 		const t = new Date(now.getTime() - 60_000);
 		expect(formatDelta(t, now)).toBe("0m");
+	});
+});
+
+describe("formatInterval", () => {
+	const now = new Date("2026-04-28T12:00:00Z");
+
+	it("renders sub-hour intervals in minutes", () => {
+		expect(formatInterval(new Date(now.getTime() + 10 * 60_000), now)).toBe(
+			"10m",
+		);
+		expect(formatInterval(new Date(now.getTime() + 59 * 60_000), now)).toBe(
+			"59m",
+		);
+	});
+
+	it("floors at 1m for near-zero positive deltas", () => {
+		// Fuzz-jittered learning steps can land seconds away from `now`.
+		// Rendering `0m` would read as broken — clamp upward to 1m.
+		expect(formatInterval(new Date(now.getTime() + 5_000), now)).toBe("1m");
+		expect(formatInterval(now, now)).toBe("1m");
+	});
+
+	it("rolls 60m up to 1h", () => {
+		expect(formatInterval(new Date(now.getTime() + 60 * 60_000), now)).toBe(
+			"1h",
+		);
+		expect(
+			formatInterval(new Date(now.getTime() + 23 * 60 * 60_000), now),
+		).toBe("23h");
+	});
+
+	it("rolls 24h up to 1d and stays in days under 30", () => {
+		const d = 24 * 60 * 60_000;
+		expect(formatInterval(new Date(now.getTime() + d), now)).toBe("1d");
+		expect(formatInterval(new Date(now.getTime() + 11 * d), now)).toBe("11d");
+		expect(formatInterval(new Date(now.getTime() + 29 * d), now)).toBe("29d");
+	});
+
+	it("switches to months between 30d and 12mo", () => {
+		const d = 24 * 60 * 60_000;
+		expect(formatInterval(new Date(now.getTime() + 30 * d), now)).toBe("1mo");
+		expect(formatInterval(new Date(now.getTime() + 180 * d), now)).toBe("6mo");
+	});
+
+	it("switches to years from 12mo onward", () => {
+		const d = 24 * 60 * 60_000;
+		expect(formatInterval(new Date(now.getTime() + 365 * d), now)).toBe("1y");
+		expect(formatInterval(new Date(now.getTime() + 3 * 365 * d), now)).toBe(
+			"3y",
+		);
 	});
 });

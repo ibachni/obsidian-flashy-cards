@@ -1,9 +1,20 @@
-import { useEffect, useReducer, useState, type ReactNode } from "react";
+import {
+	useEffect,
+	useMemo,
+	useReducer,
+	useState,
+	type ReactNode,
+} from "react";
 import { Notice } from "obsidian";
 import { useCardStore } from "../cards/store";
 import { nextDueAfter, pickNext } from "../cards/picker";
 import { Rating, type Grade } from "../srs/fsrs-engine";
-import { formatDelta, formatDueShort, parseDueDate } from "./date-utils";
+import {
+	formatDelta,
+	formatDueShort,
+	formatInterval,
+	parseDueDate,
+} from "./date-utils";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { usePluginContext } from "./PluginContext";
 import {
@@ -136,6 +147,25 @@ export function ReviewPane() {
 	const stateKind = deriveStateTagKind(current, now);
 	const sessionTotal = doneCount + due.length;
 
+	// Projected next-due dates per rating. Keyed off `current.path` so
+	// the previews recompute only when the visible card changes — the
+	// render-time `now` ticks on every parent render and would otherwise
+	// re-fuzz the displayed intervals on each tick. The `now` used here
+	// can be a few milliseconds off from the surrounding render-time
+	// `now`; that's invisible at the minute/hour/day granularity the
+	// formatter emits.
+	const intervals = useMemo<Record<Grade, string> | null>(() => {
+		if (!current) return null;
+		const previewNow = new Date();
+		const previews = plugin.previewIntervals(current.fm, previewNow);
+		return {
+			[Rating.Again]: formatInterval(previews[Rating.Again], previewNow),
+			[Rating.Hard]: formatInterval(previews[Rating.Hard], previewNow),
+			[Rating.Good]: formatInterval(previews[Rating.Good], previewNow),
+			[Rating.Easy]: formatInterval(previews[Rating.Easy], previewNow),
+		};
+	}, [current?.path, plugin]);
+
 	return (
 		<div className="flex h-full flex-col gap-4">
 			<header className="flex shrink-0 flex-col gap-2">
@@ -188,7 +218,7 @@ export function ReviewPane() {
 			</div>
 
 			<div className="flex shrink-0 flex-col gap-4">
-				<div className="flex flex-wrap justify-center gap-2">
+				<div className="flex flex-wrap justify-center gap-3">
 					{!revealed ? (
 						<button
 							type="button"
@@ -199,28 +229,59 @@ export function ReviewPane() {
 						</button>
 					) : (
 						<>
-							<GradeButton label="Again" rating={Rating.Again} onClick={grade} />
-							<GradeButton label="Hard" rating={Rating.Hard} onClick={grade} />
-							<GradeButton label="Good" rating={Rating.Good} onClick={grade} />
-							<GradeButton label="Easy" rating={Rating.Easy} onClick={grade} />
+							<GradeButton
+								label="Again"
+								rating={Rating.Again}
+								interval={intervals?.[Rating.Again]}
+								onClick={grade}
+							/>
+							<GradeButton
+								label="Hard"
+								rating={Rating.Hard}
+								interval={intervals?.[Rating.Hard]}
+								onClick={grade}
+							/>
+							<GradeButton
+								label="Good"
+								rating={Rating.Good}
+								interval={intervals?.[Rating.Good]}
+								onClick={grade}
+							/>
+							<GradeButton
+								label="Easy"
+								rating={Rating.Easy}
+								interval={intervals?.[Rating.Easy]}
+								onClick={grade}
+							/>
 						</>
 					)}
 				</div>
 
 				{/* Opacity sits on the passive zones, not the footer wrapper:
 				    parent opacity multiplies through descendants and would
-				    clip each icon's hover lift. */}
-				<footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3 text-[10px] text-muted">
-					<span className="tabular-nums opacity-60">
-						{doneCount}/{sessionTotal}
-						{newCount > 0 && <> · {newCount} new</>}
-					</span>
+				    clip each icon's hover lift.
 
-					<div className="opacity-60">
-						<HotkeyHint />
-					</div>
+				    Layout uses container queries (sidebar widths vary) with
+				    two grid-template-area arrangements:
+				    - Narrow (default): two rows. Row 1 = counter (left) +
+				      icons (right). Row 2 = hint centered, spanning both
+				      columns. Keeps the hint from wrapping mid-line.
+				    - Wide (≥380px): single row of counter | hint | icons.
+				      The middle track is `auto` so the hint hugs its
+				      content and stays mathematically centered between
+				      two equal 1fr side tracks. */}
+				<footer className="@container border-t border-border pt-3 text-[10px] text-muted">
+					<div className="grid items-center gap-x-2 gap-y-2 grid-cols-[1fr_auto] [grid-template-areas:'counter_icons'_'hint_hint'] @[380px]:grid-cols-[1fr_auto_1fr] @[380px]:[grid-template-areas:'counter_hint_icons']">
+						<span className="tabular-nums opacity-60 justify-self-start [grid-area:counter]">
+							{doneCount}/{sessionTotal}
+							{newCount > 0 && <> · {newCount} new</>}
+						</span>
 
-					<div className="flex shrink-0 items-center gap-0.5">
+						<div className="opacity-60 justify-self-center [grid-area:hint]">
+							<HotkeyHint />
+						</div>
+
+						<div className="flex shrink-0 items-center gap-0.5 justify-self-end [grid-area:icons]">
 						<IconAction
 							label="Edit card"
 							onClick={() => plugin.openEditCardModal(current)}
@@ -248,6 +309,7 @@ export function ReviewPane() {
 							<UndoIcon />
 						</IconAction>
 					</div>
+					</div>
 				</footer>
 			</div>
 		</div>
@@ -265,18 +327,21 @@ function Kbd({ children }: { children: ReactNode }) {
 }
 
 function HotkeyHint() {
+	// flex-nowrap on the row so a too-narrow container hands wrapping
+	// decisions back to the footer's container query (which switches
+	// to a stacked layout) instead of breaking mid-hint.
 	return (
-		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted">
-			<span className="inline-flex items-center gap-1">
+		<div className="flex flex-nowrap items-center gap-x-2 text-[10px] text-muted">
+			<span className="inline-flex items-center gap-1 whitespace-nowrap">
 				<Kbd>Space</Kbd> reveal
 			</span>
-			<span className="inline-flex items-center gap-1">
+			<span className="inline-flex items-center gap-1 whitespace-nowrap">
 				<Kbd>1</Kbd>–<Kbd>4</Kbd> grade
 			</span>
-			<span className="inline-flex items-center gap-1">
+			<span className="inline-flex items-center gap-1 whitespace-nowrap">
 				<Kbd>E</Kbd> source
 			</span>
-			<span className="inline-flex items-center gap-1">
+			<span className="inline-flex items-center gap-1 whitespace-nowrap">
 				<Kbd>U</Kbd> undo
 			</span>
 		</div>
@@ -341,19 +406,27 @@ const GRADE_STYLE: Record<Grade, string> = {
 function GradeButton({
 	label,
 	rating,
+	interval,
 	onClick,
 }: {
 	label: string;
 	rating: Grade;
+	interval?: string;
 	onClick: (r: Grade) => void | Promise<void>;
 }) {
 	return (
 		<button
 			type="button"
-			className={`inline-flex items-center justify-center rounded-md border! px-4 py-2 text-sm font-medium shadow-none! transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${GRADE_STYLE[rating]}`}
+			className={`inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-md border! px-4 text-base font-medium shadow-none! transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${GRADE_STYLE[rating]}`}
 			onClick={() => void onClick(rating)}
 		>
-			{label}
+			<span className="leading-none">{label}</span>
+			{/* NBSP placeholder reserves the line height so the button row
+			    doesn't twitch on the brief render where the interval is
+			    still missing. */}
+			<span className="font-mono text-xs font-normal leading-none tabular-nums opacity-60">
+				{interval ?? "\u00A0"}
+			</span>
 		</button>
 	);
 }

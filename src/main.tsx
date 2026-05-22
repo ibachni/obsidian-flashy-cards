@@ -34,6 +34,7 @@ import type { CardFrontmatterT } from "./schema/card";
 import {
 	gradeWith,
 	makeEngine,
+	previewIntervals as enginePreviewIntervals,
 	Rating,
 	type FSRS,
 	type Grade,
@@ -450,9 +451,12 @@ class LearningSystemEditCardModal extends Modal {
 		// theme variables and surface color. Otherwise Obsidian's default
 		// `.modal` background bleeds around the cream content as a halo —
 		// the "outer ring different color than inner" complaint.
+		// `learning-system-root` + `dark` go on modalEl alone; contentEl
+		// inherits the variables via the cascade and only needs the pane
+		// class (which carries the `min-height: 100%` rule that we don't
+		// want on the modal box itself).
 		modalEl.addClass("learning-system-root");
 		modalEl.addClass("ls-modal-surface");
-		contentEl.addClass("learning-system-root");
 		contentEl.addClass("learning-system-pane");
 		// Apply current theme — Obsidian's Modal sits outside the
 		// LearningSystemView's contentEl, so applyTheme()'s loop misses it.
@@ -461,7 +465,6 @@ class LearningSystemEditCardModal extends Modal {
 			(this.plugin.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
 		modalEl.toggleClass("dark", isDark);
-		contentEl.toggleClass("dark", isDark);
 
 		const mountEl = contentEl.createDiv();
 		this.root = createRoot(mountEl);
@@ -539,14 +542,12 @@ class LearningSystemDeleteCardConfirm extends Modal {
 		contentEl.empty();
 		modalEl.addClass("learning-system-root");
 		modalEl.addClass("ls-modal-surface");
-		contentEl.addClass("learning-system-root");
 		contentEl.addClass("learning-system-pane");
 		const isDark =
 			this.plugin.settings.theme === "dark" ||
 			(this.plugin.settings.theme === "system" &&
 				document.body.classList.contains("theme-dark"));
 		modalEl.toggleClass("dark", isDark);
-		contentEl.toggleClass("dark", isDark);
 
 		const mountEl = contentEl.createDiv();
 		this.root = createRoot(mountEl);
@@ -949,6 +950,20 @@ export default class LearningSystemPlugin extends Plugin {
 			request_retention: this.settings.fsrsRequestRetention,
 			maximum_interval: this.settings.fsrsMaximumInterval,
 		});
+	}
+
+	/**
+	 * Pure-read projection of next-due dates per rating. Used by the
+	 * Review pane to render the small interval line under each grade
+	 * button. Wraps the engine so views never reach for `fsrsEngine`
+	 * directly — keeps engine reconstruction (rebuildEngine on settings
+	 * change) transparent to consumers.
+	 */
+	previewIntervals(
+		fm: CardFrontmatterT,
+		now: Date = new Date(),
+	): Record<Grade, Date> {
+		return enginePreviewIntervals(this.fsrsEngine, fm, now);
 	}
 
 	applyTheme(): void {
