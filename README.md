@@ -59,4 +59,4 @@ For development, `npm run dev` watches both the TypeScript bundle and Tailwind s
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). Third-party dependencies bundled into `main.js` retain their original licenses — see [NOTICES.md](NOTICES.md).
