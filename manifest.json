@@ -3,7 +3,8 @@
 	"name": "Learning System",
 	"version": "0.1.0",
 	"minAppVersion": "1.5.0",
-	"description": "FSRS-scheduled flashcards inside Obsidian.",
+	"description": "Review flashcards with FSRS spaced-repetition scheduling.",
 	"author": "Nicolas Ibach",
+	"authorUrl": "https://github.com/ibachni",
 	"isDesktopOnly": false
 }

@@ -321,7 +321,7 @@ export function OcclusionPane() {
 				try {
 					const jsonFile = app.vault.getAbstractFileByPath(finalJsonPath);
 					if (jsonFile instanceof TFile) {
-						await app.vault.trash(jsonFile, true);
+						await app.fileManager.trashFile(jsonFile);
 						cleanupNote = " The sidecar was trashed.";
 					} else {
 						cleanupNote = ` The sidecar at ${finalJsonPath} may be stranded.`;

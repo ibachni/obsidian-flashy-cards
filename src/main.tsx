@@ -90,15 +90,13 @@ interface LearningSystemSettings {
 	cardsRoot: string;
 	fsrsRequestRetention: number;
 	fsrsMaximumInterval: number;
-	claudianHoldingFile: string;
 }
 
 const DEFAULT_SETTINGS: LearningSystemSettings = {
 	theme: "cream",
-	cardsRoot: "200_private/600_Learning/",
+	cardsRoot: "Cards/",
 	fsrsRequestRetention: 0.9,
 	fsrsMaximumInterval: 36500,
-	claudianHoldingFile: "_handoff_learning.md",
 };
 
 /**
@@ -153,6 +151,7 @@ class LearningSystemView extends ItemView {
 	}
 
 	getDisplayText(): string {
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- product brand name
 		return "Learning System";
 	}
 
@@ -286,24 +285,6 @@ class LearningSystemSettingTab extends PluginSettingTab {
 		return true;
 	}
 
-	private validateHoldingFile(value: string, errorEl: HTMLElement): boolean {
-		const trimmed = value.trim();
-		if (!trimmed) {
-			errorEl.setText("Holding file path is required.");
-			return false;
-		}
-		// The file doesn't have to exist yet — P2 creates it on first
-		// mark-and-elaborate. We only flag the case where the path
-		// already points at a folder, which would block file creation.
-		const file = this.plugin.app.vault.getAbstractFileByPath(trimmed);
-		if (file instanceof TFolder) {
-			errorEl.setText(`Path is a folder, not a file: ${trimmed}`);
-			return false;
-		}
-		errorEl.setText("");
-		return true;
-	}
-
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
@@ -317,7 +298,7 @@ class LearningSystemSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("200_private/600_Learning/")
+					.setPlaceholder("Cards/")
 					.setValue(this.plugin.settings.cardsRoot)
 					.onChange((value) => {
 						// Live validation: cheap, fires every keystroke.
@@ -402,33 +383,6 @@ class LearningSystemSettingTab extends PluginSettingTab {
 						}
 					}),
 			);
-
-		new Setting(containerEl).setName("Claudian integration").setHeading();
-
-		const holdingFileSetting = new Setting(containerEl)
-			.setName("Holding file")
-			.setDesc(
-				"Path where mark-and-elaborate prompts will be appended. Reserved for P2 wiring; not used yet.",
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("_handoff_learning.md")
-					.setValue(this.plugin.settings.claudianHoldingFile)
-					.onChange(async (value) => {
-						this.plugin.settings.claudianHoldingFile = value;
-						await this.plugin.saveSettings();
-						this.validateHoldingFile(value, holdingFileError);
-					}),
-			);
-		holdingFileSetting.settingEl.addClass("ls-wide-input");
-
-		const holdingFileError = containerEl.createDiv({
-			cls: "ls-setting-error",
-		});
-		this.validateHoldingFile(
-			this.plugin.settings.claudianHoldingFile,
-			holdingFileError,
-		);
 	}
 }
 
@@ -504,6 +458,7 @@ class LearningSystemEditCardModal extends Modal {
 					registerConfirmClose={(fn) => {
 						this.confirmClose = fn;
 					}}
+					forceClose={() => this.forceClose()}
 				/>
 			</PluginContextProvider>,
 		);
@@ -621,13 +576,14 @@ export default class LearningSystemPlugin extends Plugin {
 			(leaf) => new LearningSystemView(leaf, this),
 		);
 
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- product brand name
 		this.addRibbonIcon("brain", "Learning System", () => {
 			void this.activateView();
 		});
 
 		this.addCommand({
-			id: "open-learning-system",
-			name: "Open learning system",
+			id: "open",
+			name: "Open",
 			callback: () => void this.activateView(),
 		});
 
@@ -754,8 +710,7 @@ export default class LearningSystemPlugin extends Plugin {
 		// e opens source, u undoes. Gated to Review mode + our pane focus,
 		// so typing in the Browse tag-filter combobox or the Create
 		// editor doesn't trip the grades. Same locality model as the `d`
-		// theme toggle above. Plugin-level (not pane-local) per
-		// docs/features/keyboard-and-undo.md → Keyboard listener placement.
+		// theme toggle above. Plugin-level (not pane-local).
 		this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
 			if (e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -823,22 +778,22 @@ export default class LearningSystemPlugin extends Plugin {
 		// keyboard-accessible alternatives to the UI buttons.
 		this.addCommand({
 			id: "grade-next-again",
-			name: "Grade next due card: Again",
+			name: "Grade again",
 			callback: () => void this.gradeNextDue(Rating.Again),
 		});
 		this.addCommand({
 			id: "grade-next-hard",
-			name: "Grade next due card: Hard",
+			name: "Grade hard",
 			callback: () => void this.gradeNextDue(Rating.Hard),
 		});
 		this.addCommand({
 			id: "grade-next-good",
-			name: "Grade next due card: Good",
+			name: "Grade good",
 			callback: () => void this.gradeNextDue(Rating.Good),
 		});
 		this.addCommand({
 			id: "grade-next-easy",
-			name: "Grade next due card: Easy",
+			name: "Grade easy",
 			callback: () => void this.gradeNextDue(Rating.Easy),
 		});
 
@@ -978,7 +933,6 @@ export default class LearningSystemPlugin extends Plugin {
 			cardsRoot: merged.cardsRoot,
 			fsrsRequestRetention: merged.fsrsRequestRetention,
 			fsrsMaximumInterval: merged.fsrsMaximumInterval,
-			claudianHoldingFile: merged.claudianHoldingFile,
 		};
 	}
 
@@ -1457,7 +1411,7 @@ export default class LearningSystemPlugin extends Plugin {
 			const jsonPath = jsonPathForCard(mdPath);
 			const jsonFile = this.app.vault.getAbstractFileByPath(jsonPath);
 			if (!(jsonFile instanceof TFile)) return; // no paired sidecar
-			await this.app.vault.trash(jsonFile, true);
+			await this.app.fileManager.trashFile(jsonFile);
 		} catch (e) {
 			console.error(
 				"[learning-system] failed to trash occlusion sidecar alongside delete:",

@@ -10,10 +10,9 @@ import {
 
 /**
  * Gate predicate: matches image File entries whose MIME we can write
- * out without falling through to the `.bin` extension. SVG (`image/svg+xml`)
- * is intentionally excluded for v1 — see
- * [image-support.md](../../../docs/features/image-support.md) Scope → Out.
- * SVG pastes still land as text via the default paste handler.
+ * out without falling through to the `.bin` extension. SVG
+ * (`image/svg+xml`) is intentionally excluded for v1. SVG pastes
+ * still land as text via the default paste handler.
  */
 function isSupportedImage(file: File): boolean {
 	return (

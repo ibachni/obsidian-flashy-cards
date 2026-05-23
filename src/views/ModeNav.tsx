@@ -18,8 +18,7 @@ interface Props {
 /**
  * Centered three-mode nav for the unified pane. Active mode is
  * underlined; inactive modes go bold on hover (note: font-weight change
- * causes a small horizontal reflow — acceptable for v1; mitigations in
- * docs/features/unified-pane.md if it proves jarring).
+ * causes a small horizontal reflow — acceptable for v1).
  */
 export function ModeNav({ active, onChange }: Props) {
 	return (

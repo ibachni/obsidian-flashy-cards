@@ -35,8 +35,7 @@ export function ReviewPane() {
 
 	// Subscribe to the plugin's undo-slot pub-sub so the footer Undo
 	// button enables/disables when the slot toggles. The slot lives on
-	// the plugin (ephemeral session state, not card data — see plan
-	// docs/features/keyboard-and-undo.md → Footer reactivity), so we
+	// the plugin (ephemeral session state, not card data), so we
 	// bridge to React via a forceUpdate. useReducer's dispatch identity
 	// is stable, so the listener add/remove is symmetric.
 	const [, forceUpdate] = useReducer((x: number) => x + 1, 0);

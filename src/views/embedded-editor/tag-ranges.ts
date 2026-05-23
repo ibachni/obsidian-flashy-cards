@@ -20,21 +20,26 @@ export interface TagRange {
 	name: string;
 }
 
-// `(?<=^|\s)` keeps us off tags embedded inside words ("a#b" stays
-// untagged). The body allows `-`, `_`, and `/` so nested and
-// kebab/snake tags work. The lookahead enforces at least one letter so
+// `(^|\s)` captures the prefix (start-of-input or a whitespace char)
+// instead of using a lookbehind — lookbehinds aren't supported on
+// iOS Safari < 16.4 and Obsidian Mobile builds against the platform
+// WebView. The body allows `-`, `_`, and `/` so nested and kebab/
+// snake tags work. The lookahead enforces at least one letter so
 // `#123` (all digits) is rejected.
-const TAG_REGEX = /(?<=^|\s)#(?=[\w/-]*[A-Za-z_][\w/-]*)([\w/-]+)/g;
+const TAG_REGEX = /(^|\s)#(?=[\w/-]*[A-Za-z_][\w/-]*)([\w/-]+)/g;
 
 export function tagRangesIn(doc: string): TagRange[] {
 	const ranges: TagRange[] = [];
 	TAG_REGEX.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = TAG_REGEX.exec(doc)) !== null) {
+		const prefixLen = match[1]?.length ?? 0;
+		const body = match[2] ?? "";
+		const from = match.index + prefixLen;
 		ranges.push({
-			from: match.index,
-			to: match.index + match[0].length,
-			name: match[1] ?? "",
+			from,
+			to: from + 1 + body.length,
+			name: body,
 		});
 	}
 	return ranges;

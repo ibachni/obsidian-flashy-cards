@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	appendGrade,
 	readAll,

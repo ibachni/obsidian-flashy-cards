@@ -18,7 +18,8 @@ interface Props {
  * `Modal` host (see `LearningSystemDeleteCardConfirm` in main.tsx).
  *
  * The delete path:
- *   1. `app.vault.trash(file, true)` — system trash (recoverable).
+ *   1. `app.fileManager.trashFile(file)` — respects the user's
+ *      trash preference (system trash or `.trash/` inside the vault).
  *   2. Optimistic `removeCard` so Browse / Review re-render in the same
  *      tick. The `vault.on("delete")` listener will run a moment later
  *      and removeCard is idempotent — no double-handling.
@@ -66,7 +67,7 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 				return;
 			}
 
-			await app.vault.trash(file, true);
+			await app.fileManager.trashFile(file);
 
 			// Occlusion cards have a paired `.occlusion.json` sidecar.
 			// Trash it alongside the markdown so the delete leaves no
@@ -78,7 +79,7 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 					const jsonPath = jsonPathForCard(card.path);
 					const jsonFile = app.vault.getAbstractFileByPath(jsonPath);
 					if (jsonFile instanceof TFile) {
-						await app.vault.trash(jsonFile, true);
+						await app.fileManager.trashFile(jsonFile);
 					}
 				} catch (e) {
 					console.error(
@@ -127,10 +128,10 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 
 			<p className="text-sm text-muted! m-0">
 				{isOcclusion && siblingCount > 1
-					? `This row is one of ${siblingCount} occlusion siblings sharing the same image. Deleting trashes both the .md file and its paired .occlusion.json sidecar — every sibling goes with them. Both files can be restored from your system trash.`
+					? `This row is one of ${siblingCount} occlusion siblings sharing the same image. Deleting trashes both the .md file and its paired .occlusion.json sidecar — every sibling goes with them. Both files can be restored from the trash.`
 					: siblingCount > 1
-						? `This row is one of ${siblingCount} cloze siblings sharing the same file. Deleting removes the file — every sibling goes with it. The file moves to your system trash and can be restored.`
-						: "The file moves to your system trash and can be restored."}
+						? `This row is one of ${siblingCount} cloze siblings sharing the same file. Deleting removes the file — every sibling goes with it. The file moves to the trash and can be restored.`
+						: "The file moves to the trash and can be restored."}
 			</p>
 
 			<div className="flex justify-end gap-2">

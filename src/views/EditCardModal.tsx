@@ -1,5 +1,5 @@
-import { Notice, TFile } from "obsidian";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type App, Modal, Notice, TFile } from "obsidian";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { maskField, revealField } from "../cards/cloze";
 import { rewriteBody } from "../cards/edit-card";
@@ -23,8 +23,59 @@ interface Props {
 	 * cancels the close. Used so Esc / outside-click route through the
 	 * same dirty-confirm as the Cancel button — Obsidian's default Esc
 	 * binding bypasses React.
+	 *
+	 * When the form is dirty, the callback opens a `DiscardConfirmModal`
+	 * and returns `false` to block this close attempt; the modal calls
+	 * `forceClose` once the user confirms discard.
 	 */
 	registerConfirmClose?: (fn: () => boolean) => void;
+	/**
+	 * Bypasses the dirty-confirm and closes the host modal. Invoked from
+	 * the `DiscardConfirmModal` after the user confirms discard.
+	 */
+	forceClose?: () => void;
+}
+
+/**
+ * Small Obsidian `Modal` shown when the user tries to close the edit
+ * form with unsaved changes. Replaces `window.confirm`, which renders
+ * a browser-chrome dialog that looks out-of-place inside Obsidian and
+ * fails `no-alert` lint.
+ */
+export class DiscardConfirmModal extends Modal {
+	private readonly onConfirm: () => void;
+
+	constructor(app: App, onConfirm: () => void) {
+		super(app);
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl("h2", { text: "Discard unsaved changes?" });
+		contentEl.createEl("p", {
+			text: "Your edits to this card will be lost.",
+		});
+		const btns = contentEl.createDiv({ cls: "modal-button-container" });
+		const keepBtn = btns.createEl("button", { text: "Keep editing" });
+		keepBtn.addEventListener("click", () => this.close());
+		const discardBtn = btns.createEl("button", {
+			text: "Discard",
+			cls: "mod-warning",
+		});
+		discardBtn.addEventListener("click", () => {
+			this.close();
+			this.onConfirm();
+		});
+		// Default focus on "Keep editing" so an accidental Enter doesn't
+		// throw away the user's work.
+		keepBtn.focus();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
 }
 
 /**
@@ -45,6 +96,7 @@ export function EditCardModal({
 	onSaved,
 	onCancel,
 	registerConfirmClose,
+	forceClose,
 }: Props) {
 	const { app } = usePluginContext();
 	const cardsById = useCardStore((s) => s.cardsById);
@@ -128,9 +180,15 @@ export function EditCardModal({
 		if (!registerConfirmClose) return;
 		registerConfirmClose(() => {
 			if (!isDirtyRef.current()) return true;
-			return window.confirm("Discard unsaved changes?");
+			// Dirty: defer the close decision to an async confirm modal.
+			// Return false now to block this close attempt; the discard
+			// modal calls `forceClose` once the user confirms.
+			if (forceClose) {
+				new DiscardConfirmModal(app, forceClose).open();
+			}
+			return false;
 		});
-	}, [registerConfirmClose]);
+	}, [registerConfirmClose, forceClose, app]);
 
 	// Dirty-confirm lives in the Modal host's `close()` override so Esc /
 	// outside-click and the Cancel button share one prompt.
@@ -328,7 +386,7 @@ function Field({
 }: {
 	label: string;
 	optional?: boolean;
-	children: React.ReactNode;
+	children: ReactNode;
 }) {
 	return (
 		<div className="flex flex-col gap-1">

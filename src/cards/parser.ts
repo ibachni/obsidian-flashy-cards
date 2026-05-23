@@ -23,8 +23,7 @@ import {
  * In-memory card identity. For non-cloze cards `id === path`. For
  * cloze siblings `id === \`${path}#c${clozeIndex}\``. For occlusion
  * siblings `id === \`${path}#m${maskIndex}\``. This is the single seam
- * where one .md file can become N cards downstream — see
- * docs/features/cloze-deletions.md and docs/features/image-occlusion.md.
+ * where one .md file can become N cards downstream.
  */
 export interface ParsedCard {
 	id: string;

@@ -8,7 +8,7 @@
  * cloze cannot contain another cloze); the regex stops at the first
  * `}}` it sees inside the body.
  *
- * Not supported (intentionally, per docs/features/cloze-deletions.md):
+ * Not supported (intentional):
  * - Hint syntax `{{c1::text::hint}}`
  * - Nested clozes
  * - Empty clozes `{{c1::}}` — skipped at parse, treated as no cloze

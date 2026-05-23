@@ -2,10 +2,9 @@ import { findAvailablePath } from "./new-card";
 
 /**
  * MIME types we explicitly support for v1. SVG (`image/svg+xml`) is
- * intentionally absent — see [image-support.md](../../docs/features/image-support.md)
- * Scope → Out. Unknown MIMEs fall back to `.bin` so a misfiring caller
- * still gets a writable filename; the paste/drop handler is expected
- * to gate on `image/*` before reaching this helper.
+ * intentionally absent. Unknown MIMEs fall back to `.bin` so a
+ * misfiring caller still gets a writable filename; the paste/drop
+ * handler is expected to gate on `image/*` before reaching this helper.
  */
 const MIME_TO_EXT: Record<string, string> = {
 	"image/png": "png",

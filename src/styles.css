@@ -9,16 +9,17 @@
 
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities" layer(utilities);
-@import url("https://fonts.googleapis.com/css2?family=Sacramento&display=swap");
 
 /*
- * Brand wordmark — "Learning System" in Sacramento (script display face).
- * The font ships via Google Fonts above; if the network/CSP blocks it, the
- * stack falls back to a generic cursive so the brand still reads as
- * stylized rather than collapsing to body type.
+ * Brand wordmark — "Learning System" in a system cursive face. We
+ * intentionally don't pull in a webfont (e.g. Sacramento via Google
+ * Fonts) so the plugin stays fully offline and doesn't leak the user's
+ * IP to a third party on first load. The OS-supplied scripts give a
+ * stylized look on macOS/iOS; the generic `cursive` fallback covers
+ * other platforms.
  */
 .ls-brand {
-	font-family: "Sacramento", "Snell Roundhand", "Apple Chancery", cursive;
+	font-family: "Snell Roundhand", "Apple Chancery", cursive;
 	font-size: 2.25rem;
 	line-height: 1;
 	color: var(--ls-fg-strong);
