@@ -28,7 +28,7 @@ export function MarkdownBlock({ source, sourcePath = "", className }: Props) {
 
 		const sub = new Component();
 		sub.load();
-		el.innerHTML = "";
+		el.empty();
 		void MarkdownRenderer.render(app, source, el, sourcePath, sub);
 
 		return () => {
