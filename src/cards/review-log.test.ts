@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { TFile, type App } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 import {
 	appendGrade,
@@ -12,17 +12,31 @@ import {
 const ROOT = "Cards/";
 
 /**
- * Minimal in-memory adapter shim. The log layer only touches
- * `vault.adapter.{exists,mkdir,list,read,write,append}`, so we can
- * skip TFile/TFolder mocks entirely.
+ * Minimal in-memory backing store exposing BOTH a `vault.adapter`
+ * surface (used by `appendGrade` / `listMonths` — `adapter.append`
+ * and `adapter.list` have no Vault API equivalent) AND a `vault`
+ * surface (used by `readMonth` / `truncateLastEntry`, which were
+ * migrated to the high-level API). Both surfaces operate on the
+ * same `files` / `folders` maps so writes through one are visible
+ * through the other.
  *
- * Returns the fake App plus the file map so tests can inspect raw
- * disk contents and inject malformed entries directly.
+ * Returns the fake App plus the maps so tests can inspect raw disk
+ * contents and inject malformed entries directly.
  */
 function makeApp() {
 	const files = new Map<string, string>();
 	const folders = new Set<string>(["", "Cards"]);
 	let reads = 0;
+
+	// Stand-in TFile carrying the path that callers compare against
+	// `expected.path` / format checks. Concrete `TFile` class is
+	// imported so `instanceof` checks in production code pass.
+	const fileFor = (path: string): TFile => {
+		const f = new TFile();
+		f.path = path;
+		f.extension = path.includes(".") ? (path.split(".").pop() ?? "") : "";
+		return f;
+	};
 
 	const adapter = {
 		exists: async (p: string) => files.has(p) || folders.has(p),
@@ -57,9 +71,25 @@ function makeApp() {
 		},
 	};
 
-	const app = {
-		vault: { adapter },
-	} as unknown as App;
+	const vault = {
+		adapter,
+		getAbstractFileByPath: (p: string) => {
+			if (files.has(p)) return fileFor(p);
+			return null;
+		},
+		cachedRead: async (file: TFile) => {
+			reads++;
+			return files.get(file.path) ?? "";
+		},
+		process: async (file: TFile, fn: (data: string) => string) => {
+			const current = files.get(file.path) ?? "";
+			const next = fn(current);
+			files.set(file.path, next);
+			return next;
+		},
+	};
+
+	const app = { vault } as unknown as App;
 
 	return { app, files, folders, readsRef: () => reads };
 }

@@ -1,4 +1,4 @@
-import { TFile, type App } from "obsidian";
+import { TFile, normalizePath, type App } from "obsidian";
 
 import type { OcclusionIODeps } from "./occlusion";
 
@@ -6,17 +6,14 @@ import type { OcclusionIODeps } from "./occlusion";
  * Adapt an Obsidian `App` into the injectable I/O deps shape used by
  * `readOcclusionSet` / `writeOcclusionSet` / `persistOcclusionGrade`.
  *
- * Reads go through `app.vault.adapter.read` (returns `null` when the
- * file is missing — Obsidian doesn't surface that case via the
- * TFile graph for paths the vault hasn't indexed).
- *
- * Writes go through the high-level Vault API so the TFile graph
- * stays consistent: `vault.modify` when the path already resolves to
- * a TFile, `vault.create` otherwise. Going through `adapter.write`
- * would skip TFile registration and leave subsequent
- * `getAbstractFileByPath(jsonPath)` calls returning `null` until the
- * vault rescans — silently breaking the rename / delete sidecar
- * handlers in main.tsx that look the JSON up by path.
+ * Reads and writes both route through the high-level Vault API so the
+ * TFile graph stays consistent: `getAbstractFileByPath` returns the
+ * tracked TFile, `vault.read` / `vault.process` / `vault.create` keep
+ * the cache populated. Going through `adapter.*` would skip TFile
+ * registration and leave subsequent `getAbstractFileByPath(jsonPath)`
+ * calls returning `null` until the vault rescans — silently breaking
+ * the rename / delete sidecar handlers in main.tsx that look the JSON
+ * up by path.
  *
  * Lives in its own file because `instanceof TFile` requires a
  * *runtime* import of TFile, and the `obsidian` npm package has
@@ -28,16 +25,25 @@ import type { OcclusionIODeps } from "./occlusion";
 export function makeAppIODeps(app: App): OcclusionIODeps {
 	return {
 		read: async (path: string) => {
-			const exists = await app.vault.adapter.exists(path);
-			if (!exists) return null;
-			return app.vault.adapter.read(path);
+			const file = app.vault.getAbstractFileByPath(normalizePath(path));
+			if (!(file instanceof TFile)) return null;
+			return app.vault.read(file);
 		},
 		write: async (path: string, content: string) => {
-			const existing = app.vault.getAbstractFileByPath(path);
+			const safe = normalizePath(path);
+			const existing = app.vault.getAbstractFileByPath(safe);
 			if (existing instanceof TFile) {
-				await app.vault.modify(existing, content);
+				// `vault.process` is the locked replacement for
+				// `vault.modify` recommended by the plugin guidelines.
+				// We pass an identity-on-write transform because the
+				// caller (`writeOcclusionSet`) hands us the complete
+				// serialized JSON — there's nothing to transform from
+				// the previous content, but we still want the
+				// per-file lock so a concurrent grade write on the
+				// same JSON serializes behind us.
+				await app.vault.process(existing, () => content);
 			} else {
-				await app.vault.create(path, content);
+				await app.vault.create(safe, content);
 			}
 		},
 	};

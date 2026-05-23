@@ -86,7 +86,9 @@ export class DiscardConfirmModal extends Modal {
  * Never touches FSRS frontmatter. The save flow is two-step:
  *   1. `processFrontMatter` for topic/section/tags/modified (atomic merge,
  *      preserves any `fsrs_*` write that lands between read and write).
- *   2. `rewriteBody` + `vault.modify` for the Q/A body.
+ *   2. `vault.process(file, rewriteBody)` for the Q/A body — also
+ *      under Obsidian's per-file lock, so the body update and any
+ *      concurrent grade serialize cleanly.
  *
  * `modified` is the only date this path writes; `created` is owned by
  * the create path, `fsrs_*` by the grade path.
@@ -233,14 +235,16 @@ export function EditCardModal({
 				fm.modified = today;
 			});
 
-			// Step 2 — body. Re-read so a grade that landed between (1)
-			// and (2) has its frontmatter preserved verbatim by rewriteBody.
-			const content = await app.vault.read(file);
-			const next = rewriteBody(content, {
-				question: trimmedQuestion,
-				answer: trimmedAnswer,
-			});
-			await app.vault.modify(file, next);
+			// Step 2 — body. `vault.process` reads + writes atomically
+			// under Obsidian's per-file lock, so a grade landing between
+			// the read and the write can no longer clobber this edit.
+			// `rewriteBody` preserves frontmatter verbatim.
+			await app.vault.process(file, (content) =>
+				rewriteBody(content, {
+					question: trimmedQuestion,
+					answer: trimmedAnswer,
+				}),
+			);
 
 			// Optimistic store update — mirrors gradeAndPersist's pattern.
 			// metadataCache.changed reconciles a tick later.

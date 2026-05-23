@@ -1,4 +1,4 @@
-import { App, TFile } from "obsidian";
+import { App, TFile, TFolder, normalizePath } from "obsidian";
 import {
 	CardFrontmatter,
 	CardFrontmatterOnDisk,
@@ -402,14 +402,16 @@ export async function parseCardFile(
 	// masks and per-mask FSRS state. The markdown body is informational
 	// only — skip the # Question / # Answer requirement entirely.
 	if (result.data.occlusion_source !== undefined) {
-		// Read-only deps: the parser never writes. Inlined here rather
-		// than reused from occlusion-io.ts so this module stays free of
-		// a runtime `obsidian` import — `TFile` as a value would pull
-		// in the obsidian package whose `"main": ""` breaks vitest.
+		// Read-only deps: the parser never writes. Routes through the
+		// Vault API (TFile lookup + `vault.read`) so the metadata graph
+		// stays consistent — the equivalent live wiring is in
+		// occlusion-io.ts; kept inline here to avoid pulling that
+		// runtime obsidian import into the parser's module graph.
 		const readOnlyDeps: OcclusionIODeps = {
 			read: async (p) => {
-				const exists = await app.vault.adapter.exists(p);
-				return exists ? app.vault.adapter.read(p) : null;
+				const f = app.vault.getAbstractFileByPath(normalizePath(p));
+				if (!(f instanceof TFile)) return null;
+				return app.vault.read(f);
 			},
 			write: async () => {
 				throw new Error("parser must not write occlusion sidecars");
@@ -461,21 +463,37 @@ export async function scanCards(
 	const invalid: { path: string; error: string }[] = [];
 	let skipped = 0;
 
-	const root = cardsRoot.endsWith("/") ? cardsRoot : cardsRoot + "/";
+	// Resolve the configured folder once and walk its subtree
+	// breadth-first via a TFolder queue. Falls back silently to an
+	// empty result if the folder doesn't exist — the settings tab is
+	// the surface that reports that state to the user; a scan during
+	// boot should stay quiet. Order of traversal doesn't affect the
+	// aggregated result, so BFS vs DFS is a wash.
+	const root = app.vault.getFolderByPath(normalizePath(cardsRoot));
+	if (!root) return { parsed, invalid, skipped };
 
-	for (const file of app.vault.getMarkdownFiles()) {
-		if (!file.path.startsWith(root)) continue;
-		const outcome = await parseCardFile(app, file);
-		switch (outcome.kind) {
-			case "parsed":
-				for (const card of outcome.cards) parsed.push(card);
-				break;
-			case "invalid":
-				invalid.push({ path: outcome.path, error: outcome.error });
-				break;
-			case "skipped":
-				skipped++;
-				break;
+	const queue: TFolder[] = [root];
+	while (queue.length > 0) {
+		const folder = queue.shift();
+		if (!folder) break;
+		for (const child of folder.children) {
+			if (child instanceof TFolder) {
+				queue.push(child);
+				continue;
+			}
+			if (!(child instanceof TFile) || child.extension !== "md") continue;
+			const outcome = await parseCardFile(app, child);
+			switch (outcome.kind) {
+				case "parsed":
+					for (const card of outcome.cards) parsed.push(card);
+					break;
+				case "invalid":
+					invalid.push({ path: outcome.path, error: outcome.error });
+					break;
+				case "skipped":
+					skipped++;
+					break;
+			}
 		}
 	}
 

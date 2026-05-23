@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { normalizePath, type App } from "obsidian";
 import { appendGrade, type ReviewLogEntry } from "./review-log";
 
 /**
@@ -146,28 +146,26 @@ export function buildClozeExampleContent(today: string): string {
  * there. Notice firing lives in the caller (`runSeedClozeExample` in
  * main.tsx) so message ownership matches the `seedDemoLog` pattern.
  *
- * Caveat: `adapter.mkdir` is non-recursive on some Obsidian adapters.
- * For a deep cardsRoot like `Notes/learning/cards/` where an
- * intermediate directory doesn't exist, the mkdir call will fail with
- * a generic error. The default cardsRoot is single-level (one folder)
- * so this is rarely hit; the user can create the parent folder by
- * hand and re-run if it does.
+ * Goes through the Vault API end-to-end so the new file lands in
+ * Obsidian's TFile graph immediately — adapter writes would skip
+ * registration and confuse downstream lookups until the next rescan.
+ * `createFolder` is recursive, so deep cardsRoots like
+ * `Notes/learning/cards/` boot without intermediate-directory errors.
  */
 export async function seedClozeExample(
 	app: App,
 	cardsRoot: string,
 ): Promise<string | null> {
-	const root = cardsRoot.endsWith("/") ? cardsRoot : cardsRoot + "/";
-	const path = `${root}cloze-example.md`;
-	const adapter = app.vault.adapter;
-	if (await adapter.exists(path)) return null;
+	const root = normalizePath(cardsRoot);
+	const path = normalizePath(`${root}/cloze-example.md`);
+	if (app.vault.getAbstractFileByPath(path) !== null) return null;
 
 	const content = buildClozeExampleContent(localIsoDate(new Date()));
 
-	if (!(await adapter.exists(cardsRoot))) {
-		await adapter.mkdir(cardsRoot);
+	if (app.vault.getAbstractFileByPath(root) === null) {
+		await app.vault.createFolder(root);
 	}
-	await adapter.write(path, content);
+	await app.vault.create(path, content);
 	return path;
 }
 
@@ -197,7 +195,9 @@ export async function seedDemoLog(
 			const topic = pickTopic();
 			const grade = pickGrade(topic.retention);
 			const entry: ReviewLogEntry = {
-				path: `${cardsRoot}${topic.name}/demo-card-${total}.md`,
+				path: normalizePath(
+					`${cardsRoot}/${topic.name}/demo-card-${total}.md`,
+				),
 				topic: topic.name,
 				date: dateStr,
 				grade,

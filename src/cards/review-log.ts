@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { TFile, normalizePath, type App } from "obsidian";
 
 /**
  * Append-only JSONL log of every grade. One file per month at
@@ -24,16 +24,19 @@ export interface ReviewLogEntry {
 const HISTORY_SUBDIR = ".learning-system/history";
 const META_SUBDIR = ".learning-system";
 
+// `cardsRoot` may arrive trailing-slashed (`normalizedCardsRoot()`) or
+// bare. `normalizePath` collapses the joined form to a single canonical
+// path so a stray `//` from the caller can't reach the adapter.
 function metaDir(cardsRoot: string): string {
-	return `${cardsRoot}${META_SUBDIR}`;
+	return normalizePath(`${cardsRoot}/${META_SUBDIR}`);
 }
 
 function historyDir(cardsRoot: string): string {
-	return `${cardsRoot}${HISTORY_SUBDIR}`;
+	return normalizePath(`${cardsRoot}/${HISTORY_SUBDIR}`);
 }
 
 function monthFile(cardsRoot: string, ym: string): string {
-	return `${historyDir(cardsRoot)}/${ym}.jsonl`;
+	return normalizePath(`${historyDir(cardsRoot)}/${ym}.jsonl`);
 }
 
 function ymOf(date: string): string {
@@ -78,6 +81,12 @@ export async function appendGrade(
  * Parse one month file. Returns `[]` if the file is missing.
  * Malformed lines are skipped with a console.warn; the rest of the
  * file still parses — a single bad line should not poison the panel.
+ *
+ * Reads through the Vault API rather than `adapter.read` so the
+ * metadata graph is honoured (the file may be a TFile with cached
+ * contents from a recent write). `cachedRead` is the read-mostly
+ * variant — appropriate here since the stats panes call this on
+ * every render.
  */
 export async function readMonth(
 	app: App,
@@ -85,8 +94,9 @@ export async function readMonth(
 	ym: string,
 ): Promise<ReviewLogEntry[]> {
 	const path = monthFile(cardsRoot, ym);
-	if (!(await app.vault.adapter.exists(path))) return [];
-	const content = await app.vault.adapter.read(path);
+	const file = app.vault.getAbstractFileByPath(path);
+	if (!(file instanceof TFile)) return [];
+	const content = await app.vault.cachedRead(file);
 	return parseEntries(content, path);
 }
 
@@ -160,58 +170,81 @@ export async function readAll(
  * race, concurrent grade), the file is left unchanged and the function
  * returns `false` — callers can surface a Notice that the log may be
  * one entry stale. Returns `false` (no throw) if the file is missing
- * or empty so a missing-log adapter doesn't block undo.
+ * or empty so a missing log file doesn't block undo.
+ *
+ * The match-check + truncation both run inside `vault.process` so a
+ * concurrent grade write on the same month can't slip a new entry in
+ * between the read and the truncate. Match logic is hoisted into a
+ * helper to keep the transform pure-ish: it sets `outcome` as a side
+ * channel and returns the new content (or the original on mismatch).
  */
 export async function truncateLastEntry(
 	app: App,
 	cardsRoot: string,
 	expected: { path: string; date: string },
 ): Promise<boolean> {
-	const adapter = app.vault.adapter;
 	const path = monthFile(cardsRoot, ymOf(expected.date));
-	if (!(await adapter.exists(path))) return false;
+	const file = app.vault.getAbstractFileByPath(path);
+	if (!(file instanceof TFile)) return false;
 
-	const content = await adapter.read(path);
-	// Split on \n, then strip a trailing \r from each piece — handles
-	// both LF and CRLF line endings without parsing twice.
-	const lines = content.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+	type Outcome = "truncated" | "mismatch" | "malformed" | "empty";
+	// Boxed via a single-field holder so TS can't narrow the mutated
+	// value to its initializer literal — flow analysis doesn't follow
+	// closure side effects into the `process` callback otherwise.
+	const result: { outcome: Outcome } = { outcome: "empty" };
+	await app.vault.process(file, (content) => {
+		// Split on \n, then strip a trailing \r from each piece — handles
+		// both LF and CRLF line endings without parsing twice.
+		const lines = content
+			.split("\n")
+			.map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
 
-	let lastIdx = -1;
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i];
-		if (line && line.trim()) {
-			lastIdx = i;
-			break;
+		let lastIdx = -1;
+		for (let i = lines.length - 1; i >= 0; i--) {
+			const line = lines[i];
+			if (line && line.trim()) {
+				lastIdx = i;
+				break;
+			}
 		}
-	}
-	if (lastIdx === -1) return false;
+		if (lastIdx === -1) {
+			result.outcome = "empty";
+			return content;
+		}
 
-	let parsed: ReviewLogEntry;
-	try {
-		parsed = JSON.parse(lines[lastIdx]!) as ReviewLogEntry;
-	} catch {
+		let parsed: ReviewLogEntry;
+		try {
+			parsed = JSON.parse(lines[lastIdx]!) as ReviewLogEntry;
+		} catch {
+			result.outcome = "malformed";
+			return content;
+		}
+
+		if (parsed.path !== expected.path || parsed.date !== expected.date) {
+			result.outcome = "mismatch";
+			return content;
+		}
+
+		// Drop the matched line; keep any blank lines that preceded it so
+		// the surrounding format stays identical to what readMonth tolerates.
+		const next = lines.slice(0, lastIdx).join("\n");
+		// If anything remains, end with a newline so the next append lands
+		// on its own line. Empty file → empty string (next append re-creates
+		// the trailing newline pattern via the write/append branch).
+		result.outcome = "truncated";
+		return next.length > 0 && !next.endsWith("\n") ? next + "\n" : next;
+	});
+
+	if (result.outcome === "malformed") {
 		console.warn(
 			`[learning-system] review-log: truncate aborted — last line of ${path} is malformed`,
 		);
-		return false;
-	}
-
-	if (parsed.path !== expected.path || parsed.date !== expected.date) {
+	} else if (result.outcome === "mismatch") {
 		console.warn(
 			`[learning-system] review-log: truncate aborted — last entry of ${path} does not match expected (${expected.path} ${expected.date})`,
 		);
-		return false;
 	}
-
-	// Drop the matched line; keep any blank lines that preceded it so
-	// the surrounding format stays identical to what readMonth tolerates.
-	const next = lines.slice(0, lastIdx).join("\n");
-	// If anything remains, end with a newline so the next append lands
-	// on its own line. Empty file → empty string (next append re-creates
-	// the trailing newline pattern via the write/append branch).
-	const out = next.length > 0 && !next.endsWith("\n") ? next + "\n" : next;
-	await adapter.write(path, out);
-	return true;
+	return result.outcome === "truncated";
 }
 
 async function listMonths(app: App, cardsRoot: string): Promise<string[]> {

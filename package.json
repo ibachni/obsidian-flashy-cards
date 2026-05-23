@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-learning-plugin",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "FSRS-scheduled flashcards inside Obsidian.",
 	"main": "main.js",
 	"type": "module",

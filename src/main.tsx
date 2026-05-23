@@ -9,6 +9,7 @@ import {
 	TFile,
 	TFolder,
 	WorkspaceLeaf,
+	normalizePath,
 	type ViewStateResult,
 } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
@@ -94,7 +95,10 @@ interface LearningSystemSettings {
 
 const DEFAULT_SETTINGS: LearningSystemSettings = {
 	theme: "cream",
-	cardsRoot: "Cards/",
+	// `normalizePath` strips trailing slashes, so the canonical form
+	// of the root is unsuffixed. `normalizedCardsRoot()` adds the
+	// trailing slash where `startsWith` checks need it.
+	cardsRoot: "Cards",
 	fsrsRequestRetention: 0.9,
 	fsrsMaximumInterval: 36500,
 };
@@ -220,6 +224,12 @@ class LearningSystemView extends ItemView {
 		// Fixed-size shell for the React tree's internal scrolling.
 		// Skipped on modals — they size to content.
 		this.contentEl.addClass("learning-system-shell");
+		// `tabIndex = -1` makes contentEl programmatically focusable
+		// (no Tab-key reachability) without joining the default tab
+		// order. We focus it explicitly below so pane-local shortcuts
+		// like `d` work the moment the view opens, without the user
+		// having to click an interactive element first.
+		this.contentEl.tabIndex = -1;
 
 		// React mounts on a child div so contentEl keeps the wrapper class
 		// even if React replaces its own root. Theme variables cascade
@@ -227,6 +237,19 @@ class LearningSystemView extends ItemView {
 		const mountEl = this.contentEl.createDiv({ cls: "ls-app-shell" });
 		this.root = createRoot(mountEl);
 		this.renderRoot();
+
+		// Pane-local keyboard bindings. Scoped to `contentEl` (not
+		// `document`) so we only intercept keystrokes when focus is
+		// inside the view — keystrokes typed into Obsidian's editor or
+		// any other plugin's pane stay theirs. Modals append to
+		// `document.body`, not into our tree, so they never bubble
+		// through `contentEl` either; no modal-bail check needed.
+		this.registerDomEvent(this.contentEl, "keydown", this.handleKeyDown);
+
+		// Give the pane focus on open so keystrokes land on our handler
+		// without an interim click. `preventScroll` keeps the workspace
+		// from auto-scrolling on programmatic focus.
+		this.contentEl.focus({ preventScroll: true });
 	}
 
 	async onClose(): Promise<void> {
@@ -248,6 +271,81 @@ class LearningSystemView extends ItemView {
 			</PluginContextProvider>,
 		);
 	}
+
+	/**
+	 * Pane-local keyboard dispatcher. Wired in `onOpen` against
+	 * `contentEl`. Handles:
+	 *   - `d` → toggle theme (any mode)
+	 *   - `Space` / `Enter` → reveal (Review only)
+	 *   - `1`–`4` → grade (Review only, once revealed)
+	 *   - `e` → open the active card's source file (Review only)
+	 *   - `u` → undo the last grade (Review only)
+	 *
+	 * Bound as a field arrow so `this` stays the view when handed to
+	 * `registerDomEvent`.
+	 */
+	private handleKeyDown = (e: KeyboardEvent): void => {
+		// Don't steal keys from inputs / textareas / contentEditable
+		// inside the pane (tag filter, embedded editor, etc.).
+		const target = e.target as HTMLElement | null;
+		if (
+			target instanceof HTMLElement &&
+			(target.tagName === "INPUT" ||
+				target.tagName === "TEXTAREA" ||
+				target.isContentEditable)
+		) {
+			return;
+		}
+
+		if (
+			e.key === "d" &&
+			!e.metaKey &&
+			!e.ctrlKey &&
+			!e.altKey &&
+			!e.shiftKey
+		) {
+			e.preventDefault();
+			this.plugin.toggleTheme();
+			return;
+		}
+
+		// Review-mode-only keys below. Bail out for other modes so e.g.
+		// pressing `1` in Browse / Create / Stats stays inert.
+		if (this.mode !== "review") return;
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+		const actions = this.plugin.reviewActions;
+		if (!actions) return;
+
+		switch (e.key) {
+			case " ":
+			case "Enter":
+				if (!actions.isRevealed()) {
+					// preventDefault keeps Space from scrolling the pane
+					// and Enter from activating the currently-focused button.
+					e.preventDefault();
+					actions.reveal();
+				}
+				break;
+			case "1":
+			case "2":
+			case "3":
+			case "4":
+				if (actions.isRevealed()) {
+					e.preventDefault();
+					actions.grade(keyToRating(e.key));
+				}
+				break;
+			case "e":
+				e.preventDefault();
+				actions.openSource();
+				break;
+			case "u":
+				e.preventDefault();
+				void this.plugin.undoLastGrade();
+				break;
+		}
+	};
 }
 
 class LearningSystemSettingTab extends PluginSettingTab {
@@ -270,14 +368,18 @@ class LearningSystemSettingTab extends PluginSettingTab {
 	}
 
 	private validateCardsRoot(value: string, errorEl: HTMLElement): boolean {
-		const trimmed = value.trim().replace(/\/+$/, "");
+		const trimmed = value.trim();
 		if (!trimmed) {
 			errorEl.setText("Cards root is required.");
 			return false;
 		}
-		const file = this.plugin.app.vault.getAbstractFileByPath(trimmed);
+		// `normalizePath` strips trailing slashes, collapses `//`, flips
+		// backslashes — same canonical form used everywhere we resolve
+		// paths against this root.
+		const normalized = normalizePath(trimmed);
+		const file = this.plugin.app.vault.getAbstractFileByPath(normalized);
 		if (!(file instanceof TFolder)) {
-			errorEl.setText(`Folder not found: ${trimmed}`);
+			errorEl.setText(`Folder not found: ${normalized}`);
 			return false;
 		}
 		// Empty text + .ls-setting-error:empty CSS rule hides the element.
@@ -314,7 +416,7 @@ class LearningSystemSettingTab extends PluginSettingTab {
 						this.cardsRootRescanTimer = window.setTimeout(() => {
 							this.cardsRootRescanTimer = undefined;
 							if (!ok) return;
-							this.plugin.settings.cardsRoot = value;
+							this.plugin.settings.cardsRoot = normalizePath(value.trim());
 							void this.plugin.saveSettings();
 							void this.plugin.scanAndStoreCards();
 						}, 300);
@@ -677,102 +779,11 @@ export default class LearningSystemPlugin extends Plugin {
 			},
 		});
 
-		// `d` toggles cream/dark while a Learning System pane is the
-		// user's current context. Two acceptable conditions:
-		//   1. focus is inside our pane (`closest` match), OR
-		//   2. one of our views is the active leaf — covers the case
-		//      where focus drifted to <body> after the first toggle and
-		//      `closest` would otherwise filter every subsequent press.
-		// Inputs / editable elements bail out unconditionally so typing
-		// "d" in the tag filter still works.
-		this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
-			if (e.key !== "d") return;
-			if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-			const target = e.target as HTMLElement | null;
-			if (
-				target instanceof HTMLElement &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.isContentEditable)
-			) {
-				return;
-			}
-			const inPane = !!target?.closest?.(".learning-system-pane");
-			const activeIsOurs = !!this.app.workspace.getActiveViewOfType(
-				LearningSystemView,
-			);
-			if (!inPane && !activeIsOurs) return;
-			e.preventDefault();
-			this.toggleTheme();
-		});
-
-		// Review-pane keyboard bindings: Space/Enter reveal, 1-4 grade,
-		// e opens source, u undoes. Gated to Review mode + our pane focus,
-		// so typing in the Browse tag-filter combobox or the Create
-		// editor doesn't trip the grades. Same locality model as the `d`
-		// theme toggle above. Plugin-level (not pane-local).
-		this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
-			if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-			const target = e.target as HTMLElement | null;
-			if (
-				target instanceof HTMLElement &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.isContentEditable)
-			) {
-				return;
-			}
-
-			// Bail when focus is inside an Obsidian modal. The Edit /
-			// Delete modals' contentEl carries `learning-system-pane`
-			// for theme cascade, so the inPane check below would
-			// otherwise match a focused Save/Cancel button and steal
-			// Enter from the modal. `.modal` is Obsidian's wrapper class.
-			if (target?.closest?.(".modal")) return;
-
-			const inPane = !!target?.closest?.(".learning-system-pane");
-			const activeView =
-				this.app.workspace.getActiveViewOfType(LearningSystemView);
-			if (!inPane && !activeView) return;
-
-			// Mode gate: only fire on Review. Without this, pressing `1`
-			// in Browse / Create / Stats would still attempt to grade.
-			if (activeView?.getMode() !== "review") return;
-
-			const actions = this.reviewActions;
-			if (!actions) return;
-
-			switch (e.key) {
-				case " ":
-				case "Enter":
-					if (!actions.isRevealed()) {
-						// preventDefault keeps Space from scrolling the
-						// pane and Enter from activating the currently-
-						// focused button.
-						e.preventDefault();
-						actions.reveal();
-					}
-					break;
-				case "1":
-				case "2":
-				case "3":
-				case "4":
-					if (actions.isRevealed()) {
-						e.preventDefault();
-						actions.grade(keyToRating(e.key));
-					}
-					break;
-				case "e":
-					e.preventDefault();
-					actions.openSource();
-					break;
-				case "u":
-					e.preventDefault();
-					void this.undoLastGrade();
-					break;
-			}
-		});
+		// Keyboard shortcuts (theme toggle, review-mode reveal/grade/
+		// undo/open-source) live on the view itself — see
+		// `LearningSystemView.handleKeyDown`. Scoping there means
+		// keystrokes typed into Obsidian's editor or any other plugin's
+		// pane never reach our handler.
 
 		// Grade-via-command-palette commands. Kept after M5 since they're
 		// keyboard-accessible alternatives to the UI buttons.
@@ -930,7 +941,12 @@ export default class LearningSystemPlugin extends Plugin {
 		// around in data.json forever.
 		this.settings = {
 			theme: merged.theme,
-			cardsRoot: merged.cardsRoot,
+			// `normalizePath` here is the canonical entry point: every
+			// other call site composes paths against `settings.cardsRoot`,
+			// so if we normalize once on load there's no chance of a stray
+			// leading slash / trailing slash / backslash slipping into
+			// constructed paths downstream.
+			cardsRoot: normalizePath(merged.cardsRoot),
 			fsrsRequestRetention: merged.fsrsRequestRetention,
 			fsrsMaximumInterval: merged.fsrsMaximumInterval,
 		};
@@ -1017,8 +1033,16 @@ export default class LearningSystemPlugin extends Plugin {
 
 		if (existing) {
 			void workspace.revealLeaf(existing);
-			if (options?.mode && existing.view instanceof LearningSystemView) {
-				existing.view.setMode(options.mode);
+			if (existing.view instanceof LearningSystemView) {
+				if (options?.mode) {
+					existing.view.setMode(options.mode);
+				}
+				// Refocus the contentEl so pane-local shortcuts work
+				// right after a ribbon-click / command-palette open
+				// without forcing a click into the pane first. `onOpen`
+				// only fires on initial leaf creation; this branch
+				// covers every subsequent activation.
+				existing.view.contentEl.focus({ preventScroll: true });
 			}
 			this.applyTheme();
 			return;
@@ -1036,6 +1060,12 @@ export default class LearningSystemPlugin extends Plugin {
 		this.applyTheme();
 	}
 
+	/**
+	 * Cards-root path with a guaranteed trailing slash, used by the
+	 * many `path.startsWith(root)` checks. `settings.cardsRoot` is
+	 * already `normalizePath`-clean (stored that way by `loadSettings`),
+	 * so the only work this does is append `/`.
+	 */
 	normalizedCardsRoot(): string {
 		const r = this.settings.cardsRoot;
 		return r.endsWith("/") ? r : r + "/";
