@@ -8,18 +8,47 @@ import {
 
 interface Props {
 	card: ParsedCard;
+	/**
+	 * Total occlusion sibling count for this card's path. Only meaningful
+	 * for occlusion siblings — the row prints `occlusion (N/M)` when
+	 * provided so the user can see "this is mask 2 of 5" in Browse.
+	 * Optional because Review iterates one card at a time and doesn't
+	 * need the total.
+	 */
+	occlusionSiblingTotal?: number;
 	onClick: (path: string, e: ReactMouseEvent) => void;
 	onEdit: (card: ParsedCard) => void;
 	onDelete: (card: ParsedCard) => void;
 }
 
-export function CardRow({ card, onClick, onEdit, onDelete }: Props) {
+export function CardRow({
+	card,
+	occlusionSiblingTotal,
+	onClick,
+	onEdit,
+	onDelete,
+}: Props) {
 	const baseSlug =
 		card.path.split("/").pop()?.replace(/\.md$/, "") ?? card.path;
+	// Prefer the user-supplied `fm.title` when present — that's the
+	// label the user explicitly chose for the card. Falls back to the
+	// filename slug for cards predating the title field (and for
+	// non-occlusion cards, which don't currently expose a title in
+	// the create flow).
+	const label = card.fm.title?.trim() || baseSlug;
 	// Cloze siblings share a path; the `· cN` suffix distinguishes them
 	// in the list and makes the `aria-label`s unique for screen readers.
-	const slug =
-		card.clozeIndex !== null ? `${baseSlug} · c${card.clozeIndex}` : baseSlug;
+	// Occlusion siblings show `occlusion (N/M)` instead so the row tells
+	// the user both "this is an occlusion card" and "this is mask N of M".
+	let slug = label;
+	if (card.clozeIndex !== null) {
+		slug = `${label} · c${card.clozeIndex}`;
+	} else if (card.maskIndex !== undefined) {
+		slug =
+			occlusionSiblingTotal !== undefined
+				? `${label} · occlusion (${card.maskIndex}/${occlusionSiblingTotal})`
+				: `${label} · m${card.maskIndex}`;
+	}
 	const kind = deriveStateTagKind(card);
 
 	// Row body + action icons are sibling buttons inside the <li> rather

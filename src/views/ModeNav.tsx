@@ -3,6 +3,9 @@ export type Mode = "review" | "browse" | "create" | "stats";
 const ORDER: { mode: Mode; label: string }[] = [
 	{ mode: "review", label: "Review" },
 	{ mode: "browse", label: "Browse" },
+	// Occlusion lives inside Create now — via a "Card type" selector
+	// at the top of the pane — so it's no longer its own top-level
+	// tab. See NewCardPane.
 	{ mode: "create", label: "Create" },
 	{ mode: "stats", label: "Stats" },
 ];

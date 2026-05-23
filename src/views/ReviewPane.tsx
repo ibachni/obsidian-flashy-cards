@@ -16,6 +16,7 @@ import {
 	parseDueDate,
 } from "./date-utils";
 import { MarkdownBlock } from "./MarkdownBlock";
+import { OcclusionRenderer } from "./OcclusionRenderer";
 import { usePluginContext } from "./PluginContext";
 import {
 	deriveStateTagKind,
@@ -188,6 +189,12 @@ export function ReviewPane() {
 								{current.clozeIndex}
 							</>
 						)}
+						{current.maskIndex !== undefined && (
+							<>
+								<span className="px-1.5 opacity-50">·</span>m
+								{current.maskIndex}
+							</>
+						)}
 						<span className="px-1.5 opacity-50">·</span>
 						due {formatDueShort(current.fm.fsrs_due, now)}
 					</span>
@@ -210,20 +217,33 @@ export function ReviewPane() {
 			{/* `min-h-0` is load-bearing: a flex-1 child defaults to
 			    `min-height: auto` (= content size) and won't overflow. */}
 			<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-				<section>
-					<MarkdownBlock
-						source={current.question}
-						sourcePath={current.path}
-					/>
-				</section>
-
-				{revealed && (
-					<section className="border-t border-border pt-4">
-						<MarkdownBlock
-							source={current.answer}
-							sourcePath={current.path}
-						/>
+				{/* Occlusion siblings render the image + masks via
+				    OcclusionRenderer instead of the Q/A MarkdownBlock
+				    pair. The renderer paints both states (mask filled
+				    vs. unmasked); the `revealed` flag toggles between
+				    them in-place rather than stacking Q + A vertically. */}
+				{current.fm.occlusion_source !== undefined ? (
+					<section>
+						<OcclusionRenderer card={current} revealed={revealed} />
 					</section>
+				) : (
+					<>
+						<section>
+							<MarkdownBlock
+								source={current.question}
+								sourcePath={current.path}
+							/>
+						</section>
+
+						{revealed && (
+							<section className="border-t border-border pt-4">
+								<MarkdownBlock
+									source={current.answer}
+									sourcePath={current.path}
+								/>
+							</section>
+						)}
+					</>
 				)}
 			</div>
 

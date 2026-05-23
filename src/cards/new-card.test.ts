@@ -4,6 +4,7 @@ import {
 	findAvailablePath,
 	newCardFrontmatter,
 	serializeCard,
+	serializeClozeCard,
 	slugify,
 } from "./new-card";
 
@@ -238,5 +239,86 @@ describe("findAvailablePath", () => {
 			now,
 		);
 		expect(result).toBe("Cards/dns/foo-20260518-142345.md");
+	});
+});
+
+describe("serializeClozeCard", () => {
+	const today = new Date(2026, 4, 22); // 2026-05-22 local
+
+	it("emits fsrs_clozes with one slot per index and a well-formed body", () => {
+		const out = serializeClozeCard({
+			topic: "Vocab",
+			tags: ["es"],
+			today,
+			clozeIndices: [1, 2, 3],
+			question: "{{c1::yo}} {{c2::tú}} {{c3::él}}",
+			answer: "Conjugation.",
+		});
+		// Pin the structural contracts of the emitted YAML.
+		expect(out).toContain("type: flashcard");
+		expect(out).toContain("fsrs_clozes:");
+		expect(out).toContain('  "1":');
+		expect(out).toContain('  "2":');
+		expect(out).toContain('  "3":');
+		expect(out).toContain("    state: new");
+		// Body sections present.
+		expect(out).toContain("# Question");
+		expect(out).toContain("{{c1::yo}}");
+		expect(out).toContain("# Answer");
+		// No flat fsrs_* fields — the XOR refine would reject a cloze
+		// card holding both forms.
+		expect(out).not.toMatch(/^fsrs_due:/m);
+		expect(out).not.toMatch(/^fsrs_state:/m);
+	});
+
+	it("emits the optional title when provided", () => {
+		const out = serializeClozeCard({
+			title: "Spanish conjugation",
+			topic: "Vocab",
+			today,
+			clozeIndices: [1],
+			question: "{{c1::yo hablo}}",
+			answer: ".",
+		});
+		// `yamlScalar` only quotes values that need YAML escaping —
+		// plain ASCII titles round-trip bare.
+		expect(out).toMatch(/^title: Spanish conjugation$/m);
+	});
+
+	it("quotes a title containing YAML-sensitive characters", () => {
+		const out = serializeClozeCard({
+			title: "Cards #2: Special characters!",
+			topic: "Vocab",
+			today,
+			clozeIndices: [1],
+			question: "{{c1::yo hablo}}",
+			answer: ".",
+		});
+		// Embedded `#` after a colon triggers `needsQuoting`'s
+		// `: | #` rule so the value lands quoted on disk.
+		expect(out).toMatch(/^title: ".*"$/m);
+	});
+
+	it("omits the title line entirely when title is empty/undefined", () => {
+		const out = serializeClozeCard({
+			topic: "Vocab",
+			today,
+			clozeIndices: [1],
+			question: "{{c1::yo hablo}}",
+			answer: ".",
+		});
+		expect(out).not.toMatch(/^title:/m);
+	});
+
+	it("emits empty `tags: []` and `related: []` when no inputs given", () => {
+		const out = serializeClozeCard({
+			topic: "Vocab",
+			today,
+			clozeIndices: [1],
+			question: "{{c1::yo}}",
+			answer: ".",
+		});
+		expect(out).toContain("tags: []");
+		expect(out).toContain("related: []");
 	});
 });

@@ -53,6 +53,20 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 		return Array.from(set).sort();
 	}, [cardArray]);
 
+	// Per-path occlusion sibling counts so CardRow can render
+	// `occlusion (N/M)`. Computed once over the full card array — O(N)
+	// — and looked up per row by path in O(1). Cloze cards also share
+	// paths but go down the `clozeIndex` rendering branch and never
+	// look up this map.
+	const occlusionTotalsByPath = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const c of cardArray) {
+			if (c.maskIndex === undefined) continue;
+			counts.set(c.path, (counts.get(c.path) ?? 0) + 1);
+		}
+		return counts;
+	}, [cardArray]);
+
 	const topicRows: TopicRow[] = useMemo(() => {
 		const endOfToday = endOfTodayDate();
 		const map = new Map<string, TopicRow>();
@@ -182,6 +196,11 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 							// stable across re-renders.
 							key={c.id}
 							card={c}
+							occlusionSiblingTotal={
+								c.maskIndex !== undefined
+									? occlusionTotalsByPath.get(c.path)
+									: undefined
+							}
 							onClick={handleRowClick}
 							onEdit={(card) => plugin.openEditCardModal(card)}
 							onDelete={(card) => plugin.openDeleteCardConfirm(card)}

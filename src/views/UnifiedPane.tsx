@@ -72,10 +72,15 @@ export function UnifiedPane({ mode, mountedModes, onSetMode }: Props) {
 				<div
 					className={
 						mode === "create"
-							? "min-h-0 flex-1 overflow-y-auto"
+							? "@container flex min-h-0 flex-1 flex-col"
 							: "hidden"
 					}
 				>
+					{/* NewCardPane handles its own scrolling because the
+					    Occlusion sub-mode needs a pinned header. Switched
+					    the wrapper from `overflow-y-auto` to a flex column
+					    so the sub-pane controls scroll behavior per
+					    card-type. */}
 					<NewCardPane active={mode === "create"} />
 				</div>
 			)}

@@ -1,5 +1,6 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import type { App } from "obsidian";
 import {
 	forwardRef,
 	useEffect,
@@ -32,6 +33,14 @@ interface Props {
 	 * that.
 	 */
 	heightClass?: string;
+	/**
+	 * Enables image paste/drop in this editor. When set, files dropped
+	 * or pasted as `image/*` are written under
+	 * `<getCardsRoot()>/_attachments/` and a `![[…]]` embed is inserted
+	 * at the cursor. `getCardsRoot` is read per event so settings
+	 * changes don't require recreating the editor.
+	 */
+	imageAttachments?: { app: App; getCardsRoot: () => string };
 }
 
 /**
@@ -59,13 +68,21 @@ interface Props {
  */
 export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, Props>(
 	function EmbeddedEditor(
-		{ value, onChange, autoFocus, onSubmit, heightClass = "h-24" },
+		{
+			value,
+			onChange,
+			autoFocus,
+			onSubmit,
+			heightClass = "h-24",
+			imageAttachments,
+		},
 		ref,
 	) {
 		const containerRef = useRef<HTMLDivElement>(null);
 		const viewRef = useRef<EditorView | null>(null);
 		const onChangeRef = useRef(onChange);
 		const onSubmitRef = useRef(onSubmit);
+		const imageAttachmentsRef = useRef(imageAttachments);
 		// Tracks what the editor's doc *should* be from the prop side.
 		// Set inside both effects so neither feeds back into the other.
 		const lastPropValueRef = useRef(value);
@@ -79,9 +96,18 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, Props>(
 		}, [onSubmit]);
 
 		useEffect(() => {
+			imageAttachmentsRef.current = imageAttachments;
+		}, [imageAttachments]);
+
+		useEffect(() => {
 			const container = containerRef.current;
 			if (!container) return;
 
+			// `imageAttachments` is captured once at mount via the ref —
+			// the same getCardsRoot callback is reused for every event,
+			// and reads the latest cardsRoot on each call so settings
+			// changes don't require recreating the editor.
+			const ia = imageAttachmentsRef.current;
 			const extensions = buildExtensions(
 				(doc) => {
 					if (doc !== lastPropValueRef.current) {
@@ -90,6 +116,14 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, Props>(
 					}
 				},
 				() => onSubmitRef.current ?? null,
+				ia
+					? {
+							app: ia.app,
+							getCardsRoot: () =>
+								imageAttachmentsRef.current?.getCardsRoot() ??
+								ia.getCardsRoot(),
+						}
+					: undefined,
 			);
 
 			const view = new EditorView({

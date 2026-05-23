@@ -8,6 +8,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { computePanelPosition, type PanelPosition } from "./combobox-position";
+
 /**
  * Single-select combobox with free input — Topic field. Mirrors
  * `TagCombobox`'s trigger row + portaled dropdown layout (input on the
@@ -29,10 +31,11 @@ export function TopicCombobox({
 	const [open, setOpen] = useState(false);
 	const [highlighted, setHighlighted] = useState(0);
 	const [isDark, setIsDark] = useState(false);
-	const [panelStyle, setPanelStyle] = useState<{
-		top: number;
-		right: number;
-	}>({ top: 0, right: 0 });
+	const [panelStyle, setPanelStyle] = useState<PanelPosition>({
+		top: 0,
+		right: 0,
+		maxHeight: 400,
+	});
 
 	const triggerRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -53,11 +56,7 @@ export function TopicCombobox({
 		if (!open) return;
 		const chevron = chevronRef.current;
 		if (!chevron) return;
-		const rect = chevron.getBoundingClientRect();
-		setPanelStyle({
-			top: rect.bottom + 4,
-			right: window.innerWidth - rect.right,
-		});
+		setPanelStyle(computePanelPosition(chevron));
 		const root = chevron.closest(".learning-system-root");
 		setIsDark(root?.classList.contains("dark") ?? false);
 	}, [open]);
@@ -157,11 +156,13 @@ export function TopicCombobox({
 						style={{
 							position: "fixed",
 							top: panelStyle.top,
+							bottom: panelStyle.bottom,
 							right: panelStyle.right,
+							maxHeight: panelStyle.maxHeight,
 							zIndex: 1000,
 							backgroundColor: "var(--ls-elevated)",
 						}}
-						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-45 max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
+						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-45 overflow-y-auto rounded-md border border-border shadow-md`}
 					>
 						<ul className="m-0 list-none p-0">
 							{matches.map((t, i) => (

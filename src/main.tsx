@@ -14,6 +14,14 @@ import {
 import { createRoot, type Root } from "react-dom/client";
 
 import { seedClozeExample, seedDemoLog } from "./cards/demo-seed";
+import { persistOcclusionGrade } from "./cards/grade-occlusion";
+import { makeAppIODeps } from "./cards/occlusion-io";
+import {
+	fmToMaskFsrs,
+	isOcclusionSibling,
+	jsonPathForCard,
+	resolveOcclusionJsonPath,
+} from "./cards/occlusion";
 import type { ParsedCard } from "./cards/parser";
 import {
 	applyGradeUpdate,
@@ -116,6 +124,10 @@ function keyToRating(key: string): Grade {
 function parseModeFromState(state: unknown): Mode | null {
 	if (!state || typeof state !== "object") return null;
 	const m = (state as { mode?: unknown }).mode;
+	// Legacy "occlusion" persisted by pre-merger workspace layouts
+	// re-maps to "create" — occlusion now lives as a card-type
+	// inside the Create pane.
+	if (m === "occlusion") return "create";
 	if (m === "review" || m === "browse" || m === "create" || m === "stats") {
 		return m;
 	}
@@ -917,6 +929,12 @@ export default class LearningSystemPlugin extends Plugin {
 					`[learning-system] rename: ${oldPath} → ${file.path}`,
 				);
 				useCardStore.getState().removeCard(oldPath);
+				// Occlusion pairing: if there was a `.occlusion.json` next
+				// to the old `.md`, move it alongside. Best-effort and
+				// silent — a `.md` rename on a non-occlusion card finds no
+				// paired JSON and exits cleanly. Runs fire-and-forget so
+				// the rename event handler stays synchronous.
+				void this.moveOcclusionSidecarIfPaired(oldPath, file.path);
 				if (file.path.startsWith(this.normalizedCardsRoot())) {
 					window.setTimeout(() => {
 						void this.refreshCard(file);
@@ -931,6 +949,13 @@ export default class LearningSystemPlugin extends Plugin {
 			this.app.vault.on("delete", (file) => {
 				if (!(file instanceof TFile)) return;
 				useCardStore.getState().removeCard(file.path);
+				// Occlusion pairing: trash the JSON sidecar when the `.md`
+				// is deleted. Fire-and-forget; silent no-op if no JSON
+				// exists. Skipped when the deleted file is itself the
+				// JSON (avoids a recursive-trash on the partner).
+				if (file.extension === "md") {
+					void this.trashOcclusionSidecarIfPaired(file.path);
+				}
 			}),
 		);
 	}
@@ -1063,6 +1088,17 @@ export default class LearningSystemPlugin extends Plugin {
 	}
 
 	openEditCardModal(card: ParsedCard): void {
+		// Occlusion siblings route to Create mode pre-loaded with the
+		// set's JSON. NewCardPane subscribes to
+		// `useCardStore.editingOcclusionPath`, flips its internal
+		// "Card type" selector to "occlusion", and triggers the load.
+		// The mode flip happens in the same activation so the pane
+		// mounts (or re-renders) already aimed at the right card.
+		if (card.maskIndex !== undefined) {
+			useCardStore.getState().setEditingOcclusionPath(card.path);
+			void this.activateView({ mode: "create" });
+			return;
+		}
 		new LearningSystemEditCardModal(this, card).open();
 	}
 
@@ -1164,25 +1200,47 @@ export default class LearningSystemPlugin extends Plugin {
 
 		const modified = now.toISOString().slice(0, 10);
 
-		// processFrontMatter's callback receives `any`. The mutation
-		// logic is extracted into `applyGradeUpdate` so the cloze vs.
-		// non-cloze branch is unit-testable without an App mock.
-		await this.app.fileManager.processFrontMatter(file, (raw) => {
-			applyGradeUpdate(
-				raw as Record<string, unknown>,
-				card,
-				update,
-				modified,
+		if (isOcclusionSibling(card)) {
+			// Occlusion sibling: per-mask FSRS lives in the JSON sidecar.
+			// The grade routes through the per-JSON write queue so
+			// concurrent grades on different siblings of the same set
+			// serialize. The markdown file gets a `modified` bump only.
+			const jsonPath = resolveOcclusionJsonPath(
+				card.path,
+				card.fm.occlusion_source ?? "",
 			);
-		});
+			await persistOcclusionGrade(
+				makeAppIODeps(this.app),
+				jsonPath,
+				card.maskIndex!,
+				update,
+			);
+			await this.app.fileManager.processFrontMatter(file, (raw) => {
+				(raw as Record<string, unknown>).modified = modified;
+			});
+		} else {
+			// processFrontMatter's callback receives `any`. The mutation
+			// logic is extracted into `applyGradeUpdate` so the cloze vs.
+			// non-cloze branch is unit-testable without an App mock.
+			await this.app.fileManager.processFrontMatter(file, (raw) => {
+				applyGradeUpdate(
+					raw as Record<string, unknown>,
+					card,
+					update,
+					modified,
+				);
+			});
+		}
 
 		// Stash for undo only after the FSRS write succeeded — a failed
 		// processFrontMatter must not leave a snapshot that would roll
-		// back a grade that never landed.
+		// back a grade that never landed. `maskIndex` is undefined for
+		// non-occlusion cards; the undo path branches on it.
 		stashGrade(this.undoSlot, {
 			cardId: card.id,
 			path: card.path,
 			clozeIndex: card.clozeIndex,
+			maskIndex: card.maskIndex,
 			previousFm: previousFmSnapshot,
 			logDate: modified,
 		});
@@ -1271,9 +1329,33 @@ export default class LearningSystemPlugin extends Plugin {
 		}
 
 		try {
-			await this.app.fileManager.processFrontMatter(file, (raw) => {
-				applyUndoRestore(raw as Record<string, unknown>, entry);
-			});
+			if (entry.maskIndex !== undefined) {
+				// Occlusion sibling: roll back the mask's FSRS slot in
+				// the JSON sidecar via the same write queue the grade
+				// write used. Project the snapshot's flat fsrs_* fields
+				// into the mask block via fmToMaskFsrs (same field
+				// names — structural conversion).
+				const jsonPath = resolveOcclusionJsonPath(
+					entry.path,
+					entry.previousFm.occlusion_source ?? "",
+				);
+				await persistOcclusionGrade(
+					makeAppIODeps(this.app),
+					jsonPath,
+					entry.maskIndex,
+					fmToMaskFsrs(entry.previousFm),
+				);
+				// Also restore the markdown's `modified` field — round-trip
+				// symmetry with gradeAndPersist, which bumped it forward.
+				await this.app.fileManager.processFrontMatter(file, (raw) => {
+					(raw as Record<string, unknown>).modified =
+						entry.previousFm.modified;
+				});
+			} else {
+				await this.app.fileManager.processFrontMatter(file, (raw) => {
+					applyUndoRestore(raw as Record<string, unknown>, entry);
+				});
+			}
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			console.error("[learning-system] undo frontmatter restore failed:", e);
@@ -1332,6 +1414,55 @@ export default class LearningSystemPlugin extends Plugin {
 			const msg = e instanceof Error ? e.message : String(e);
 			console.error("[learning-system] grade failed:", e);
 			new Notice(`Grade failed: ${msg}`);
+		}
+	}
+
+	/**
+	 * If a `.occlusion.json` sidecar paired the old `.md` path, rename
+	 * it to sit next to the new `.md` path. Silent no-op when no JSON
+	 * is paired (non-occlusion cards, or one half of the pair already
+	 * missing).
+	 *
+	 * The convention `<slug>.md` ↔ `<slug>.occlusion.json` means the
+	 * new sidecar path is derivable from the new `.md` path — no need
+	 * to read the card's frontmatter at the rename moment.
+	 */
+	async moveOcclusionSidecarIfPaired(
+		oldMdPath: string,
+		newMdPath: string,
+	): Promise<void> {
+		try {
+			const oldJson = jsonPathForCard(oldMdPath);
+			const jsonFile = this.app.vault.getAbstractFileByPath(oldJson);
+			if (!(jsonFile instanceof TFile)) return; // no paired sidecar
+			const newJson = jsonPathForCard(newMdPath);
+			await this.app.fileManager.renameFile(jsonFile, newJson);
+		} catch (e) {
+			console.error(
+				"[learning-system] failed to move occlusion sidecar alongside rename:",
+				e,
+			);
+		}
+	}
+
+	/**
+	 * If a `.occlusion.json` sidecar paired the deleted `.md` path,
+	 * trash it alongside. Silent no-op when no JSON is paired. The
+	 * delete confirm modal also calls this path on user-initiated
+	 * delete; the vault.on("delete") handler covers the rename-then-
+	 * delete and external-delete cases.
+	 */
+	async trashOcclusionSidecarIfPaired(mdPath: string): Promise<void> {
+		try {
+			const jsonPath = jsonPathForCard(mdPath);
+			const jsonFile = this.app.vault.getAbstractFileByPath(jsonPath);
+			if (!(jsonFile instanceof TFile)) return; // no paired sidecar
+			await this.app.vault.trash(jsonFile, true);
+		} catch (e) {
+			console.error(
+				"[learning-system] failed to trash occlusion sidecar alongside delete:",
+				e,
+			);
 		}
 	}
 

@@ -1,9 +1,10 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 
 import {
 	EmbeddedEditor,
 	type EmbeddedEditorHandle,
 } from "./embedded-editor/EmbeddedEditor";
+import { usePluginContext } from "./PluginContext";
 
 export interface MarkdownFieldHandle {
 	focus: () => void;
@@ -35,6 +36,16 @@ export const MarkdownField = forwardRef<MarkdownFieldHandle, Props>(
 		ref,
 	) {
 		const editorRef = useRef<EmbeddedEditorHandle>(null);
+		const { app, plugin } = usePluginContext();
+
+		// Snapshot identity — the editor mounts once and reads
+		// `getCardsRoot()` per event, so re-deriving this object every
+		// render would not trigger rebuilds anyway, but `useMemo` keeps
+		// the inner ref-sync effect cheap.
+		const imageAttachments = useMemo(
+			() => ({ app, getCardsRoot: () => plugin.normalizedCardsRoot() }),
+			[app, plugin],
+		);
 
 		useImperativeHandle(
 			ref,
@@ -56,6 +67,7 @@ export const MarkdownField = forwardRef<MarkdownFieldHandle, Props>(
 					onChange={onChange}
 					autoFocus={autoFocus}
 					onSubmit={onSubmit}
+					imageAttachments={imageAttachments}
 				/>
 			</div>
 		);

@@ -1,4 +1,4 @@
-import type { CardFrontmatterT } from "../schema/card";
+import type { CardFrontmatterT, ClozeFsrsSlotT } from "../schema/card";
 
 function pad(n: number): string {
 	return String(n).padStart(2, "0");
@@ -91,6 +91,152 @@ function yamlScalar(s: string): string {
 		return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 	}
 	return s;
+}
+
+/**
+ * Build the base (non-FSRS) part of a card's frontmatter for cloze
+ * cards. Cloze cards skip the flat `fsrs_*` block entirely — per-
+ * sibling FSRS lives under `fsrs_clozes` — so this helper carries
+ * the topic, section, tags, dates, and (for now empty) `related`
+ * list. The caller produces the `fsrs_clozes` map separately via
+ * `newClozeSlot`.
+ */
+export function newClozeCardBase(input: {
+	topic: string;
+	section?: string;
+	tags?: string[];
+	today?: Date;
+}): {
+	topic: string;
+	section?: string;
+	tags: string[];
+	related: string[];
+	created: string;
+	modified: string;
+} {
+	const today = input.today ?? new Date();
+	const stamp = isoDate(today);
+	const base: {
+		topic: string;
+		section?: string;
+		tags: string[];
+		related: string[];
+		created: string;
+		modified: string;
+	} = {
+		topic: input.topic,
+		tags: input.tags ?? [],
+		related: [],
+		created: stamp,
+		modified: stamp,
+	};
+	if (input.section && input.section.length > 0) {
+		base.section = input.section;
+	}
+	return base;
+}
+
+/**
+ * Single new-state slot for `fsrs_clozes[N]`. Same shape every cloze
+ * sibling starts with: zeroed counters, `state: "new"`, due today so
+ * the picker surfaces it immediately. The first grade write
+ * populates real values via `applyGradeUpdate`.
+ */
+export function newClozeSlot(today: Date = new Date()): ClozeFsrsSlotT {
+	const stamp = isoDate(today);
+	return {
+		due: stamp,
+		stability: 0,
+		difficulty: 0,
+		elapsed_days: 0,
+		scheduled_days: 0,
+		learning_steps: 0,
+		reps: 0,
+		lapses: 0,
+		state: "new",
+		last_review: null,
+	};
+}
+
+/**
+ * Render a cloze card to its on-disk markdown form. Mirrors
+ * `serializeCard` but emits `fsrs_clozes: { "1": {…}, "2": {…} }`
+ * instead of the flat `fsrs_*` block. The `clozeIndices` list comes
+ * from the caller (typically `collectClozeIndices(question, answer)`);
+ * each index gets an identical new-state slot.
+ *
+ * Title is optional in the schema but accepted here so the caller
+ * can label new cards consistently with occlusion / future flows.
+ */
+export function serializeClozeCard(input: {
+	title?: string;
+	topic: string;
+	section?: string;
+	tags?: string[];
+	today?: Date;
+	clozeIndices: number[];
+	question: string;
+	answer: string;
+}): string {
+	const today = input.today ?? new Date();
+	const base = newClozeCardBase({
+		topic: input.topic,
+		section: input.section,
+		tags: input.tags,
+		today,
+	});
+	const slot = newClozeSlot(today);
+	const slotYaml = (): string[] => [
+		`    due: ${slot.due}`,
+		`    stability: ${slot.stability}`,
+		`    difficulty: ${slot.difficulty}`,
+		`    elapsed_days: ${slot.elapsed_days}`,
+		`    scheduled_days: ${slot.scheduled_days}`,
+		`    learning_steps: ${slot.learning_steps}`,
+		`    reps: ${slot.reps}`,
+		`    lapses: ${slot.lapses}`,
+		`    state: ${slot.state}`,
+		`    last_review:`,
+	];
+	const lines: string[] = ["---"];
+	lines.push("type: flashcard");
+	if (input.title && input.title.length > 0) {
+		lines.push(`title: ${yamlScalar(input.title)}`);
+	}
+	lines.push(`topic: ${yamlScalar(base.topic)}`);
+	if (base.section && base.section.length > 0) {
+		lines.push(`section: ${yamlScalar(base.section)}`);
+	}
+	lines.push(`created: ${base.created}`);
+	lines.push(`modified: ${base.modified}`);
+	lines.push("fsrs_clozes:");
+	for (const n of input.clozeIndices) {
+		lines.push(`  "${n}":`);
+		for (const row of slotYaml()) lines.push(row);
+	}
+	if (base.tags.length === 0) {
+		lines.push("tags: []");
+	} else {
+		lines.push("tags:");
+		for (const t of base.tags) lines.push(`  - ${yamlScalar(t)}`);
+	}
+	if (base.related.length === 0) {
+		lines.push("related: []");
+	} else {
+		lines.push("related:");
+		for (const r of base.related) lines.push(`  - ${yamlScalar(r)}`);
+	}
+	lines.push("---");
+	lines.push("");
+	lines.push("# Question");
+	lines.push("");
+	lines.push(input.question);
+	lines.push("");
+	lines.push("# Answer");
+	lines.push("");
+	lines.push(input.answer);
+	lines.push("");
+	return lines.join("\n");
 }
 
 /**

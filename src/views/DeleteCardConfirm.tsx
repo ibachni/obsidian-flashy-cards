@@ -1,6 +1,7 @@
 import { Notice, TFile } from "obsidian";
 import { useEffect, useRef } from "react";
 
+import { jsonPathForCard } from "../cards/occlusion";
 import type { ParsedCard } from "../cards/parser";
 import { useCardStore } from "../cards/store";
 import { usePluginContext } from "./PluginContext";
@@ -40,11 +41,14 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 	const reps = card.fm.fsrs_reps;
 	const repsLabel = `${reps} ${reps === 1 ? "review" : "reviews"}`;
 
-	// For cloze cards, the file backs N siblings — delete removes them
-	// all because we trash the whole file. Count the siblings so the
-	// confirm copy is honest about the blast radius.
+	// Both cloze and occlusion cards have N siblings sharing one file
+	// (or pair of files). Count them so the confirm copy is honest
+	// about the blast radius — deleting one sibling deletes the whole
+	// set in both cases. Non-sibling cards stay at 0.
+	const isCloze = card.clozeIndex !== null;
+	const isOcclusion = card.maskIndex !== undefined;
 	const siblingCount =
-		card.clozeIndex === null
+		!isCloze && !isOcclusion
 			? 0
 			: Array.from(cardsById.values()).filter((c) => c.path === card.path)
 					.length;
@@ -63,6 +67,26 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 			}
 
 			await app.vault.trash(file, true);
+
+			// Occlusion cards have a paired `.occlusion.json` sidecar.
+			// Trash it alongside the markdown so the delete leaves no
+			// orphaned files. Best-effort — a missing sidecar is fine
+			// (a stale state we never recovered), and any error stays
+			// in the console so the markdown delete still completes.
+			if (isOcclusion) {
+				try {
+					const jsonPath = jsonPathForCard(card.path);
+					const jsonFile = app.vault.getAbstractFileByPath(jsonPath);
+					if (jsonFile instanceof TFile) {
+						await app.vault.trash(jsonFile, true);
+					}
+				} catch (e) {
+					console.error(
+						"[learning-system] failed to trash paired occlusion sidecar:",
+						e,
+					);
+				}
+			}
 
 			const store = useCardStore.getState();
 			store.removeCard(card.path);
@@ -87,9 +111,11 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 	return (
 		<div className="flex flex-col gap-4">
 			<h2 className="text-base font-medium text-fg-strong! m-0">
-				{siblingCount > 1
-					? `Delete this file and all ${siblingCount} cloze siblings?`
-					: "Delete this card?"}
+				{isOcclusion && siblingCount > 1
+					? `Delete this occlusion set (${siblingCount} cards)?`
+					: siblingCount > 1
+						? `Delete this file and all ${siblingCount} cloze siblings?`
+						: "Delete this card?"}
 			</h2>
 
 			<div className="flex flex-col gap-1 text-sm text-muted!">
@@ -100,9 +126,11 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 			</div>
 
 			<p className="text-sm text-muted! m-0">
-				{siblingCount > 1
-					? `This row is one of ${siblingCount} cloze siblings sharing the same file. Deleting removes the file — every sibling goes with it. The file moves to your system trash and can be restored.`
-					: "The file moves to your system trash and can be restored."}
+				{isOcclusion && siblingCount > 1
+					? `This row is one of ${siblingCount} occlusion siblings sharing the same image. Deleting trashes both the .md file and its paired .occlusion.json sidecar — every sibling goes with them. Both files can be restored from your system trash.`
+					: siblingCount > 1
+						? `This row is one of ${siblingCount} cloze siblings sharing the same file. Deleting removes the file — every sibling goes with it. The file moves to your system trash and can be restored.`
+						: "The file moves to your system trash and can be restored."}
 			</p>
 
 			<div className="flex justify-end gap-2">

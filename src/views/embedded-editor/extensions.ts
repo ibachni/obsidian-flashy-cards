@@ -13,8 +13,10 @@ import {
 } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap } from "@codemirror/view";
 import { Strikethrough } from "@lezer/markdown";
+import type { App } from "obsidian";
 
 import { livePreviewPlugin } from "./live-preview-decorations";
+import { pasteDropPlugin } from "./paste-drop-plugin";
 import { themeExtension } from "./theme";
 
 /**
@@ -187,6 +189,7 @@ function formattingPlugin(
 export function buildExtensions(
 	onDocChange: (doc: string) => void,
 	getOnSubmit: () => (() => void) | null = () => null,
+	imageAttachments?: { app: App; getCardsRoot: () => string },
 ): Extension[] {
 	return [
 		history(),
@@ -198,6 +201,18 @@ export function buildExtensions(
 		// later-in-capture), so our wrap runs and Obsidian's bound
 		// Cmd+B never reaches its handler.
 		formattingPlugin(getOnSubmit),
+		// Paste/drop image handler. Optional so non-card editors (if any
+		// land in the future) can opt out by omitting `imageAttachments`.
+		// Uses contentDOM-bubble handlers, so it composes cleanly with
+		// the window-capture formattingPlugin above.
+		...(imageAttachments
+			? [
+					pasteDropPlugin(
+						imageAttachments.app,
+						imageAttachments.getCardsRoot,
+					),
+				]
+			: []),
 		keymap.of([
 			...closeBracketsKeymap,
 			...defaultKeymap,

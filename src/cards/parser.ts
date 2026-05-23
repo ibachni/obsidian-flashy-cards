@@ -12,21 +12,36 @@ import {
 	maskField,
 	revealField,
 } from "./cloze";
+import {
+	expandOcclusionSiblings,
+	readOcclusionSet,
+	resolveOcclusionJsonPath,
+	type OcclusionIODeps,
+} from "./occlusion";
 
 /**
  * In-memory card identity. For non-cloze cards `id === path`. For
- * cloze siblings `id === \`${path}#c${clozeIndex}\``. This is the
- * single seam where one .md file can become N cards downstream — see
- * docs/features/cloze-deletions.md.
+ * cloze siblings `id === \`${path}#c${clozeIndex}\``. For occlusion
+ * siblings `id === \`${path}#m${maskIndex}\``. This is the single seam
+ * where one .md file can become N cards downstream — see
+ * docs/features/cloze-deletions.md and docs/features/image-occlusion.md.
  */
 export interface ParsedCard {
 	id: string;
 	path: string;
 	/**
 	 * `null` for non-cloze cards. For cloze siblings, the cloze number
-	 * this sibling represents (e.g. 1, 2, 3 …).
+	 * this sibling represents (e.g. 1, 2, 3 …). Mutually exclusive with
+	 * `maskIndex` — a card is either a cloze sibling or an occlusion
+	 * sibling or neither.
 	 */
 	clozeIndex: number | null;
+	/**
+	 * `undefined` for non-occlusion cards. For occlusion siblings, the
+	 * 1-based mask number this sibling represents. Carries through to
+	 * the renderer so it knows which rectangle to fill on the Q side.
+	 */
+	maskIndex?: number;
 	fm: CardFrontmatterT;
 	/** Pre-rendered question for this sibling (cloze masking applied). */
 	question: string;
@@ -317,6 +332,54 @@ export function expandCard(
 	};
 }
 
+/**
+ * Resolve + read the occlusion sidecar JSON for a card whose
+ * frontmatter sets `occlusion_source`, then expand into per-mask
+ * siblings. Returns either the expanded `ParsedCard[]` or a
+ * structured error to surface as `kind: "invalid"`.
+ *
+ * Split out from `parseCardFile` so the I/O dep is injectable —
+ * `parseCardFile` wires `app.vault.adapter`, tests can wire a fake
+ * reader against a `Record<string, string>` of JSON contents.
+ */
+export async function parseOcclusionCard(
+	deps: OcclusionIODeps,
+	path: string,
+	data: CardFrontmatterOnDiskT,
+): Promise<
+	| { kind: "parsed"; cards: ParsedCard[] }
+	| { kind: "invalid"; error: string }
+> {
+	// The refine guarantees occlusion_source is set when this branch
+	// fires, but the type is still `string | undefined` after Zod —
+	// guard explicitly so the rest of this function reads cleanly.
+	const source = data.occlusion_source;
+	if (!source) {
+		return {
+			kind: "invalid",
+			error: "occlusion branch entered without occlusion_source",
+		};
+	}
+	const jsonPath = resolveOcclusionJsonPath(path, source);
+	const read = await readOcclusionSet(deps, jsonPath);
+	switch (read.kind) {
+		case "missing":
+			return {
+				kind: "invalid",
+				error: `occlusion sidecar not found: ${jsonPath} — the .md was moved without the .occlusion.json`,
+			};
+		case "invalid":
+			return {
+				kind: "invalid",
+				error: `occlusion sidecar invalid: ${read.error}`,
+			};
+		case "ok": {
+			const cards = expandOcclusionSiblings(path, data, read.set);
+			return { kind: "parsed", cards };
+		}
+	}
+}
+
 export async function parseCardFile(
 	app: App,
 	file: TFile,
@@ -334,6 +397,34 @@ export async function parseCardFile(
 			.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
 			.join("; ");
 		return { kind: "invalid", path: file.path, error };
+	}
+
+	// Occlusion branch: the sidecar JSON is the source of truth for
+	// masks and per-mask FSRS state. The markdown body is informational
+	// only — skip the # Question / # Answer requirement entirely.
+	if (result.data.occlusion_source !== undefined) {
+		// Read-only deps: the parser never writes. Inlined here rather
+		// than reused from occlusion-io.ts so this module stays free of
+		// a runtime `obsidian` import — `TFile` as a value would pull
+		// in the obsidian package whose `"main": ""` breaks vitest.
+		const readOnlyDeps: OcclusionIODeps = {
+			read: async (p) => {
+				const exists = await app.vault.adapter.exists(p);
+				return exists ? app.vault.adapter.read(p) : null;
+			},
+			write: async () => {
+				throw new Error("parser must not write occlusion sidecars");
+			},
+		};
+		const outcome = await parseOcclusionCard(
+			readOnlyDeps,
+			file.path,
+			result.data,
+		);
+		if (outcome.kind === "invalid") {
+			return { kind: "invalid", path: file.path, error: outcome.error };
+		}
+		return { kind: "parsed", cards: outcome.cards };
 	}
 
 	const content = await app.vault.cachedRead(file);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CardFrontmatterOnDisk, type CardFrontmatterT } from "../schema/card";
+import type { OcclusionIODeps, OcclusionSetT } from "./occlusion";
 import type { FsrsUpdate } from "../srs/fsrs-engine";
 import {
 	applyGradeUpdate,
@@ -7,6 +8,7 @@ import {
 	expandCard,
 	fmToClozeSlot,
 	parseBodySections,
+	parseOcclusionCard,
 	type ParsedCard,
 } from "./parser";
 
@@ -568,6 +570,138 @@ describe("expandCard rendering (Phase 3 snapshot)", () => {
 		expect(result.cards[1]!.answer).toBe(
 			"Present indicative of *hablar*, c1: hablo.",
 		);
+	});
+});
+
+describe("parseOcclusionCard", () => {
+	function fakeReader(files: Record<string, string>): OcclusionIODeps {
+		return {
+			read: async (p) => (p in files ? files[p]! : null),
+			write: async () => {
+				throw new Error("unexpected write in parser tests");
+			},
+		};
+	}
+
+	const baseOcclusionFm = {
+		type: "flashcard" as const,
+		topic: "Anatomy",
+		created: "2026-05-22",
+		modified: "2026-05-22",
+		occlusion_source: "heart.occlusion.json",
+	};
+
+	it("expands a hand-crafted .md + .occlusion.json pair into N siblings", async () => {
+		// Mirrors the on-disk shape from the doc: card at
+		// `anatomy/heart.md`, sidecar at `anatomy/heart.occlusion.json`,
+		// three masks → three ParsedCards keyed `<path>#m<n>`.
+		const data = CardFrontmatterOnDisk.parse(baseOcclusionFm);
+		const set: OcclusionSetT = {
+			image: "_attachments/heart.png",
+			mode: "hide-one",
+			masks: [
+				{ x: 10, y: 10, w: 30, h: 30, fsrs: null },
+				{ x: 50, y: 50, w: 30, h: 30, fsrs: null },
+				{ x: 90, y: 90, w: 30, h: 30, fsrs: null },
+			],
+		};
+		const deps = fakeReader({
+			"anatomy/heart.occlusion.json": JSON.stringify(set),
+		});
+		const result = await parseOcclusionCard(deps, "anatomy/heart.md", data);
+		expect(result.kind).toBe("parsed");
+		if (result.kind !== "parsed") return;
+		expect(result.cards).toHaveLength(3);
+		expect(result.cards.map((c) => c.id)).toEqual([
+			"anatomy/heart.md#m1",
+			"anatomy/heart.md#m2",
+			"anatomy/heart.md#m3",
+		]);
+		// Each sibling carries the same source path (no `#m<n>` suffix)
+		// so `getAbstractFileByPath(card.path)` resolves to the real file.
+		expect(result.cards.every((c) => c.path === "anatomy/heart.md")).toBe(
+			true,
+		);
+		// FSRS defaults from synthesized new-state slots.
+		expect(result.cards.every((c) => c.fm.fsrs_state === "new")).toBe(true);
+	});
+
+	it("flags a missing sidecar JSON as invalid with an informative error", async () => {
+		// User moved the .md without the .occlusion.json, or hand-rolled
+		// frontmatter pointing at a non-existent sidecar.
+		const data = CardFrontmatterOnDisk.parse(baseOcclusionFm);
+		const deps = fakeReader({});
+		const result = await parseOcclusionCard(deps, "anatomy/heart.md", data);
+		expect(result.kind).toBe("invalid");
+		if (result.kind !== "invalid") return;
+		expect(result.error).toMatch(/sidecar not found/);
+		expect(result.error).toContain("anatomy/heart.occlusion.json");
+	});
+
+	it("flags a malformed sidecar JSON as invalid", async () => {
+		const data = CardFrontmatterOnDisk.parse(baseOcclusionFm);
+		const deps = fakeReader({
+			"anatomy/heart.occlusion.json": "{ this is not json",
+		});
+		const result = await parseOcclusionCard(deps, "anatomy/heart.md", data);
+		expect(result.kind).toBe("invalid");
+		if (result.kind !== "invalid") return;
+		expect(result.error).toMatch(/sidecar invalid/);
+	});
+
+	it("flags a schema-violating sidecar (empty masks) as invalid", async () => {
+		const data = CardFrontmatterOnDisk.parse(baseOcclusionFm);
+		const deps = fakeReader({
+			"anatomy/heart.occlusion.json": JSON.stringify({
+				image: "_attachments/heart.png",
+				mode: "hide-one",
+				masks: [],
+			}),
+		});
+		const result = await parseOcclusionCard(deps, "anatomy/heart.md", data);
+		expect(result.kind).toBe("invalid");
+		if (result.kind !== "invalid") return;
+		expect(result.error).toMatch(/sidecar invalid/);
+	});
+
+	it("preserves per-mask FSRS state from the sidecar", async () => {
+		const data = CardFrontmatterOnDisk.parse(baseOcclusionFm);
+		const set: OcclusionSetT = {
+			image: "_attachments/heart.png",
+			mode: "hide-one",
+			masks: [
+				{
+					x: 10,
+					y: 10,
+					w: 30,
+					h: 30,
+					fsrs: {
+						fsrs_due: "2026-06-01",
+						fsrs_stability: 7.5,
+						fsrs_difficulty: 5,
+						fsrs_elapsed_days: 14,
+						fsrs_scheduled_days: 21,
+						fsrs_learning_steps: 0,
+						fsrs_reps: 5,
+						fsrs_lapses: 1,
+						fsrs_state: "review",
+						fsrs_last_review: "2026-05-18",
+					},
+				},
+				{ x: 50, y: 50, w: 30, h: 30, fsrs: null },
+			],
+		};
+		const deps = fakeReader({
+			"anatomy/heart.occlusion.json": JSON.stringify(set),
+		});
+		const result = await parseOcclusionCard(deps, "anatomy/heart.md", data);
+		if (result.kind !== "parsed") throw new Error("expected parsed");
+		// Sibling 1 reads from the disk slot.
+		expect(result.cards[0]!.fm.fsrs_state).toBe("review");
+		expect(result.cards[0]!.fm.fsrs_due).toBe("2026-06-01");
+		expect(result.cards[0]!.fm.fsrs_stability).toBe(7.5);
+		// Sibling 2 reads from the synthesized new-state defaults.
+		expect(result.cards[1]!.fm.fsrs_state).toBe("new");
 	});
 });
 

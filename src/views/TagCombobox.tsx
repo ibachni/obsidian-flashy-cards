@@ -8,6 +8,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { computePanelPosition, type PanelPosition } from "./combobox-position";
+
 interface Props {
 	allTags: string[];
 	selected: Set<string>;
@@ -59,10 +61,14 @@ export function TagCombobox({
 	const panelRef = useRef<HTMLDivElement>(null);
 	// Anchor by `right` rather than `left + width` so the panel can
 	// auto-size to its content (w-fit) without us having to measure it.
-	const [panelStyle, setPanelStyle] = useState<{
-		top: number;
-		right: number;
-	}>({ top: 0, right: 0 });
+	// `top` OR `bottom` is set depending on whether the panel opens
+	// downward (default) or flips upward (when space below is tight) —
+	// see `computePanelPosition`.
+	const [panelStyle, setPanelStyle] = useState<PanelPosition>({
+		top: 0,
+		right: 0,
+		maxHeight: 400,
+	});
 
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
@@ -92,18 +98,15 @@ export function TagCombobox({
 		}
 	}, [totalItems, highlighted]);
 
-	// Position the portal panel under the chevron and snapshot the
+	// Position the portal panel relative to the chevron — flipping
+	// upward if there's not enough room below — and snapshot the
 	// current theme. Portaled elements are outside .learning-system-root,
 	// so we copy the dark class state from the nearest wrapper ancestor.
 	useLayoutEffect(() => {
 		if (!open) return;
 		const chevron = chevronRef.current;
 		if (!chevron) return;
-		const rect = chevron.getBoundingClientRect();
-		setPanelStyle({
-			top: rect.bottom + 4,
-			right: window.innerWidth - rect.right,
-		});
+		setPanelStyle(computePanelPosition(chevron));
 		const root = chevron.closest(".learning-system-root");
 		setIsDark(root?.classList.contains("dark") ?? false);
 	}, [open]);
@@ -243,7 +246,9 @@ export function TagCombobox({
 						style={{
 							position: "fixed",
 							top: panelStyle.top,
+							bottom: panelStyle.bottom,
 							right: panelStyle.right,
+							maxHeight: panelStyle.maxHeight,
 							zIndex: 1000,
 							// Inline bg (not the `bg-elevated` utility) because the
 							// panel is portaled to document.body, where Tailwind's
@@ -253,7 +258,7 @@ export function TagCombobox({
 							// regardless of source order.
 							backgroundColor: "var(--ls-elevated)",
 						}}
-						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-[180px] max-h-[60vh] overflow-y-auto rounded-md border border-border shadow-md`}
+						className={`learning-system-root ${isDark ? "dark" : ""} w-fit min-w-[180px] overflow-y-auto rounded-md border border-border shadow-md`}
 					>
 						<div className="sticky top-0 z-10 flex items-center justify-end bg-elevated! px-1 py-0.5">
 							<button

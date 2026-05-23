@@ -17,6 +17,15 @@ interface CardStoreState {
 	 * empty state.
 	 */
 	reviewScope: string[] | null;
+	/**
+	 * Path of the occlusion card currently being edited via the
+	 * Occlusion pane, or `null` when the pane is in create mode. Set
+	 * by the plugin's `openEditCardModal` branch for occlusion
+	 * siblings — see main.tsx. Lives on the store (not as a pane prop)
+	 * so the plugin can flip both the mode and the editing target in
+	 * one update without re-mounting the pane.
+	 */
+	editingOcclusionPath: string | null;
 
 	setCard: (card: ParsedCard) => void;
 	setInvalid: (path: string, error: string) => void;
@@ -40,12 +49,14 @@ interface CardStoreState {
 	clear: () => void;
 	setReviewScope: (paths: string[] | null) => void;
 	clearReviewScope: () => void;
+	setEditingOcclusionPath: (path: string | null) => void;
 }
 
 export const useCardStore = create<CardStoreState>((set) => ({
 	cardsById: new Map(),
 	invalidByPath: new Map(),
 	reviewScope: null,
+	editingOcclusionPath: null,
 
 	setCard: (card) =>
 		set((s) => {
@@ -103,4 +114,5 @@ export const useCardStore = create<CardStoreState>((set) => ({
 
 	setReviewScope: (paths) => set({ reviewScope: paths }),
 	clearReviewScope: () => set({ reviewScope: null }),
+	setEditingOcclusionPath: (path) => set({ editingOcclusionPath: path }),
 }));
