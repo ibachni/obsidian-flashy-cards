@@ -31,7 +31,7 @@ interface Props {
 
 export function BrowsePane({ onSwitchToReview }: Props) {
 	const { app, plugin } = usePluginContext();
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
 	const setReviewScope = useCardStore((s) => s.setReviewScope);
 
 	const [selectedTopics, setSelectedTopics] = useState<Set<string>>(
@@ -41,8 +41,8 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 	const [status, setStatus] = useState<StatusFilter>("all");
 
 	const cardArray = useMemo(
-		() => Array.from(cardsByPath.values()),
-		[cardsByPath],
+		() => Array.from(cardsById.values()),
+		[cardsById],
 	);
 
 	const allTags = useMemo(() => {
@@ -177,7 +177,10 @@ export function BrowsePane({ onSwitchToReview }: Props) {
 				<ul className="m-0 flex list-none flex-col p-0">
 					{filtered.map((c: ParsedCard) => (
 						<CardRow
-							key={c.path}
+							// Cloze siblings share a path but have distinct ids
+							// (`<path>#cN`). Keying by id keeps React happy and
+							// stable across re-renders.
+							key={c.id}
 							card={c}
 							onClick={handleRowClick}
 							onEdit={(card) => plugin.openEditCardModal(card)}

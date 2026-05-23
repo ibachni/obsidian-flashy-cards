@@ -116,7 +116,7 @@ This is the **single seam** where one file becomes N cards. Everything downstrea
 
 Each phase ends in a state where the plugin is shippable and the non-cloze experience is unchanged. The whole feature does not need to land in one PR.
 
-### Phase 1 — Cloze module + schema + parser expansion (foundation)
+### Phase 1 — Cloze module + schema + parser expansion (foundation) ✅ shipped
 
 **Goal:** the data model knows about clozes end-to-end, but no UI surface uses it yet.
 
@@ -132,7 +132,7 @@ Each phase ends in a state where the plugin is shippable and the non-cloze exper
 
 **Phase 1 ships nothing user-visible.** Existing cards keep working because the parser returns 1-element arrays for them and the rest of the code reads `array[0]` (or iterates, which is the same thing).
 
-### Phase 2 — Store keying + grade-and-persist + undo + review log
+### Phase 2 — Store keying + grade-and-persist + undo + review log ✅ shipped
 
 **Goal:** A cloze card hand-edited into a file can be graded, undone, and shows up correctly in the review log. Browse and Review still don't display masks.
 
@@ -150,7 +150,7 @@ Each phase ends in a state where the plugin is shippable and the non-cloze exper
 
 **At end of Phase 2:** a user who manually adds `{{c1::…}} {{c2::…}}` to a card and reloads the plugin sees two sibling rows in Browse (with default `path#c1` styling — no nice label yet), can grade each independently, can undo each independently, and the review log has per-sibling entries.
 
-### Phase 3 — Rendering (mask + highlight)
+### Phase 3 — Rendering (mask + highlight) ✅ shipped
 
 **Goal:** Review pane shows the masked question and the revealed-and-highlighted answer.
 
@@ -166,9 +166,11 @@ Each phase ends in a state where the plugin is shippable and the non-cloze exper
 
 **Manual smoke test:** open the plugin, reload, grade a cloze card. Mask `[…]` should render in Q; highlighted span should render in A.
 
-### Phase 4 — Edit modal + demo seed + roadmap update
+### Phase 4 — Edit modal + demo seed + roadmap update ✅ shipped
 
 **Goal:** Round-trip user experience. Editing a cloze card shows the source. A demo card showcases the format.
+
+> The edit-modal swap landed early in Phase 3 to close a data-loss hazard (see Phase 3 review). Phase 4 added the demo seed command + roadmap mark.
 
 - `src/views/EditCardModal.tsx`: pre-fill from `card.rawQuestion ?? card.question` / `card.rawAnswer ?? card.answer`. The save path is already body-replace via `rewriteBody`, so editing the source is one-line change.
 - `src/cards/demo-seed.ts`: add one cloze card (e.g. Spanish verb conjugation or a capital-cities row) so a fresh install demonstrates the format.
@@ -186,6 +188,12 @@ Each phase ends in a state where the plugin is shippable and the non-cloze exper
 6. **No special UI for cloze in `NewCardPane`.** The syntax is typeable. A toolbar button is a Phase 5 (out-of-scope) polish.
 7. **Cloze in both Q and A.** Either field can hold cloze syntax; siblings span both. A card with `{{c1::…}}` only in the answer still produces sibling #1 — useful for "show the question, hide the punchline" cards.
 8. **Same cloze number across spans hides together.** `{{c1::Paris}} is in {{c1::France}}` produces one sibling whose Q hides both spans. Matches Anki and makes "multi-blank single-fact" cards possible.
+
+## Non-cloze → cloze transition friction
+
+A non-cloze card whose body picks up `{{cN::…}}` markers while the frontmatter still carries flat `fsrs_*` scalars passes the XOR refine as a non-cloze card. The parser takes the non-cloze branch and renders the literal `{{cN::…}}` markup in question/answer — the cloze syntax becomes silently inert until the user restructures frontmatter (drop the flat fields, add `fsrs_clozes`).
+
+This is the **right** default — auto-converting would erase the card's existing FSRS state — but the friction is real. Phase 4 should add a "convert to cloze" action in the edit modal that does the schema swap and creates a single `fsrs_clozes` slot seeded from the prior flat state. Until then, users converting an existing card to cloze form do it by hand.
 
 ## Edge cases
 

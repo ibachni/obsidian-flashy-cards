@@ -25,7 +25,7 @@ import {
 
 export function ReviewPane() {
 	const { app, plugin } = usePluginContext();
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
 	const reviewScope = useCardStore((s) => s.reviewScope);
 	const clearReviewScope = useCardStore((s) => s.clearReviewScope);
 
@@ -47,7 +47,7 @@ export function ReviewPane() {
 	}, [plugin]);
 	const canUndo = plugin.undoSlot.entry !== null;
 
-	const cardArray = Array.from(cardsByPath.values());
+	const cardArray = Array.from(cardsById.values());
 	const now = new Date();
 	const scopedArray =
 		reviewScope === null
@@ -114,6 +114,29 @@ export function ReviewPane() {
 		};
 	}, [current, revealed]);
 
+	// Projected next-due dates per rating. Keyed off `current?.path` so
+	// the previews recompute only when the visible card changes — the
+	// render-time `now` ticks on every parent render and would otherwise
+	// re-fuzz the displayed intervals on each tick. The `now` used here
+	// can be a few milliseconds off from the surrounding render-time
+	// `now`; that's invisible at the minute/hour/day granularity the
+	// formatter emits.
+	//
+	// Lives above the empty-state early-return so React's hook order
+	// stays stable when `current` flips to null on the last grade —
+	// otherwise the component renders one fewer hook and crashes.
+	const intervals = useMemo<Record<Grade, string> | null>(() => {
+		if (!current) return null;
+		const previewNow = new Date();
+		const previews = plugin.previewIntervals(current.fm, previewNow);
+		return {
+			[Rating.Again]: formatInterval(previews[Rating.Again], previewNow),
+			[Rating.Hard]: formatInterval(previews[Rating.Hard], previewNow),
+			[Rating.Good]: formatInterval(previews[Rating.Good], previewNow),
+			[Rating.Easy]: formatInterval(previews[Rating.Easy], previewNow),
+		};
+	}, [current?.path, plugin]);
+
 	if (!current) {
 		const next = nextDueAfter(cardArray, now, reviewScope);
 		const scopeWasActive = reviewScope !== null;
@@ -147,25 +170,6 @@ export function ReviewPane() {
 	const stateKind = deriveStateTagKind(current, now);
 	const sessionTotal = doneCount + due.length;
 
-	// Projected next-due dates per rating. Keyed off `current.path` so
-	// the previews recompute only when the visible card changes — the
-	// render-time `now` ticks on every parent render and would otherwise
-	// re-fuzz the displayed intervals on each tick. The `now` used here
-	// can be a few milliseconds off from the surrounding render-time
-	// `now`; that's invisible at the minute/hour/day granularity the
-	// formatter emits.
-	const intervals = useMemo<Record<Grade, string> | null>(() => {
-		if (!current) return null;
-		const previewNow = new Date();
-		const previews = plugin.previewIntervals(current.fm, previewNow);
-		return {
-			[Rating.Again]: formatInterval(previews[Rating.Again], previewNow),
-			[Rating.Hard]: formatInterval(previews[Rating.Hard], previewNow),
-			[Rating.Good]: formatInterval(previews[Rating.Good], previewNow),
-			[Rating.Easy]: formatInterval(previews[Rating.Easy], previewNow),
-		};
-	}, [current?.path, plugin]);
-
 	return (
 		<div className="flex h-full flex-col gap-4">
 			<header className="flex shrink-0 flex-col gap-2">
@@ -176,6 +180,12 @@ export function ReviewPane() {
 							<>
 								<span className="px-1 opacity-50">/</span>
 								{current.fm.section}
+							</>
+						)}
+						{current.clozeIndex !== null && (
+							<>
+								<span className="px-1.5 opacity-50">·</span>c
+								{current.clozeIndex}
 							</>
 						)}
 						<span className="px-1.5 opacity-50">·</span>

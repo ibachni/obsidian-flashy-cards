@@ -18,14 +18,14 @@ function shortDate(iso: string): string {
 }
 
 export function Forecast() {
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
 	const buckets = useMemo(() => {
 		// `today` is captured on each store-change render, not on every
 		// React render — which is fine; the forecast doesn't need
 		// sub-minute precision. A user crossing midnight while staring at
 		// the pane gets the new day's view on the next grade event.
-		return forecast(Array.from(cardsByPath.values()), new Date(), DAYS);
-	}, [cardsByPath]);
+		return forecast(Array.from(cardsById.values()), new Date(), DAYS);
+	}, [cardsById]);
 
 	const max = Math.max(1, ...buckets.map(bucketTotal));
 	const grandTotal = buckets.reduce((acc, b) => acc + bucketTotal(b), 0);

@@ -1,8 +1,20 @@
 import type { CardFrontmatterT } from "../schema/card";
 
 export interface UndoEntry {
-	/** Card path — used to resolve the TFile and verify against the current card. */
+	/**
+	 * In-memory card id — `<path>` for non-cloze cards, `<path>#c<N>`
+	 * for cloze siblings. Used by the store lookup so the rollback
+	 * lands on the exact sibling that was graded.
+	 */
+	cardId: string;
+	/** Card path — used to resolve the TFile and as the review-log `path` field. */
 	path: string;
+	/**
+	 * `null` for non-cloze cards; the cloze number for siblings. Drives
+	 * the undo branch in `undoLastGrade`: non-cloze restores flat
+	 * `fsrs_*` scalars, cloze sibling restores `fsrs_clozes[N]`.
+	 */
+	clozeIndex: number | null;
 	/** Deep-cloned frontmatter snapshot from *before* the grade. Restored verbatim. */
 	previousFm: CardFrontmatterT;
 	/** YYYY-MM-DD written into the review-log entry's `date` field. Used to find the month file. */

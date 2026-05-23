@@ -13,9 +13,14 @@ import {
 } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
 
-import { seedDemoLog } from "./cards/demo-seed";
+import { seedClozeExample, seedDemoLog } from "./cards/demo-seed";
 import type { ParsedCard } from "./cards/parser";
-import { parseCardFile, scanCards } from "./cards/parser";
+import {
+	applyGradeUpdate,
+	applyUndoRestore,
+	parseCardFile,
+	scanCards,
+} from "./cards/parser";
 import { pickNext } from "./cards/picker";
 import {
 	appendGrade,
@@ -653,6 +658,17 @@ export default class LearningSystemPlugin extends Plugin {
 			},
 		});
 
+		// Writes one working 3-sibling cloze card to <cardsRoot>/cloze-example.md
+		// so a fresh install can see the cloze format end-to-end. Skips
+		// if the file already exists; delete it manually to re-seed.
+		this.addCommand({
+			id: "seed-cloze-example",
+			name: "Seed cloze example card (dev)",
+			callback: () => {
+				void this.runSeedClozeExample();
+			},
+		});
+
 		this.addCommand({
 			id: "toggle-theme",
 			name: "Toggle theme (cream / dark)",
@@ -668,7 +684,7 @@ export default class LearningSystemPlugin extends Plugin {
 			name: "Edit current card",
 			checkCallback: (checking) => {
 				const state = useCardStore.getState();
-				const cards = Array.from(state.cardsByPath.values());
+				const cards = Array.from(state.cardsById.values());
 				const card = pickNext(cards, new Date(), state.reviewScope);
 				if (!card) return false;
 				if (!checking) this.openEditCardModal(card);
@@ -685,7 +701,7 @@ export default class LearningSystemPlugin extends Plugin {
 			name: "Delete current card",
 			checkCallback: (checking) => {
 				const state = useCardStore.getState();
-				const cards = Array.from(state.cardsByPath.values());
+				const cards = Array.from(state.cardsById.values());
 				const card = pickNext(cards, new Date(), state.reviewScope);
 				if (!card) return false;
 				if (!checking) this.openDeleteCardConfirm(card);
@@ -1073,6 +1089,29 @@ export default class LearningSystemPlugin extends Plugin {
 		}
 	}
 
+	private async runSeedClozeExample(): Promise<void> {
+		try {
+			const path = await seedClozeExample(
+				this.app,
+				this.normalizedCardsRoot(),
+			);
+			// Notice ownership lives here (not inside the seeder) so the
+			// success and skip paths share one call site — same pattern
+			// as runSeedDemoLog.
+			if (path === null) {
+				new Notice(
+					"Cloze example already exists. Delete it manually to re-seed.",
+				);
+			} else {
+				new Notice(`Created cloze example at ${path}`);
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			console.error("[learning-system] seed-cloze-example failed:", e);
+			new Notice(`Seed failed: ${msg}`);
+		}
+	}
+
 	async scanAndStoreCards(): Promise<void> {
 		const result = await scanCards(this.app, this.settings.cardsRoot);
 		const store = useCardStore.getState();
@@ -1098,6 +1137,12 @@ export default class LearningSystemPlugin extends Plugin {
 	 * Run the FSRS computation, write the new state to the card's
 	 * frontmatter, and bump `modified`. Used by both the Review pane
 	 * (M5 UI) and the grade-next-* commands.
+	 *
+	 * Branches on `card.clozeIndex`: non-cloze cards write flat
+	 * `fsrs_*` scalars (today's path); cloze siblings write to
+	 * `fsrs_clozes[String(clozeIndex)]` so per-sibling FSRS state stays
+	 * independent. The in-memory `card.fm` is the projected flat view
+	 * either way, so `gradeWith` doesn't need to care about the form.
 	 */
 	async gradeAndPersist(card: ParsedCard, rating: Grade): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(card.path);
@@ -1119,19 +1164,25 @@ export default class LearningSystemPlugin extends Plugin {
 
 		const modified = now.toISOString().slice(0, 10);
 
-		// processFrontMatter's callback receives `any`. Cast to a
-		// known-shape Record before mutating, then use Object.assign so
-		// every field flows from `update` in one statement.
+		// processFrontMatter's callback receives `any`. The mutation
+		// logic is extracted into `applyGradeUpdate` so the cloze vs.
+		// non-cloze branch is unit-testable without an App mock.
 		await this.app.fileManager.processFrontMatter(file, (raw) => {
-			const fm = raw as Record<string, unknown>;
-			Object.assign(fm, update, { modified });
+			applyGradeUpdate(
+				raw as Record<string, unknown>,
+				card,
+				update,
+				modified,
+			);
 		});
 
 		// Stash for undo only after the FSRS write succeeded — a failed
 		// processFrontMatter must not leave a snapshot that would roll
 		// back a grade that never landed.
 		stashGrade(this.undoSlot, {
+			cardId: card.id,
 			path: card.path,
+			clozeIndex: card.clozeIndex,
 			previousFm: previousFmSnapshot,
 			logDate: modified,
 		});
@@ -1150,7 +1201,10 @@ export default class LearningSystemPlugin extends Plugin {
 		// landed in frontmatter.
 		try {
 			const entry: ReviewLogEntry = {
-				path: card.path,
+				// Use card.id so cloze siblings get per-sibling history
+				// rows (e.g. `vocab/hablar.md#c2`). Non-cloze cards have
+				// id === path so this is a no-op for them.
+				path: card.id,
 				topic: card.fm.topic,
 				date: modified,
 				grade: rating as ReviewLogEntry["grade"],
@@ -1206,7 +1260,9 @@ export default class LearningSystemPlugin extends Plugin {
 				await truncateLastEntry(
 					this.app,
 					this.normalizedCardsRoot(),
-					{ path: entry.path, date: entry.logDate },
+					// `cardId` (compound for cloze siblings) matches the log
+					// entry's `path` field — see ReviewLogEntry doc-comment.
+					{ path: entry.cardId, date: entry.logDate },
 				);
 			} catch (e) {
 				console.error("[learning-system] undo log truncation failed:", e);
@@ -1216,11 +1272,7 @@ export default class LearningSystemPlugin extends Plugin {
 
 		try {
 			await this.app.fileManager.processFrontMatter(file, (raw) => {
-				const fm = raw as Record<string, unknown>;
-				// Only overwrites keys present in previousFm. Keys the user
-				// added mid-window survive; keys they removed aren't re-added.
-				// Same trade-off the grade path has.
-				Object.assign(fm, entry.previousFm);
+				applyUndoRestore(raw as Record<string, unknown>, entry);
 			});
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -1231,8 +1283,9 @@ export default class LearningSystemPlugin extends Plugin {
 
 		// Optimistic store update — same reasoning as gradeAndPersist:
 		// metadataCache.changed lands a tick later, and without this push
-		// pickNext briefly re-renders the post-grade state.
-		const current = useCardStore.getState().cardsByPath.get(entry.path);
+		// pickNext briefly re-renders the post-grade state. Look up by
+		// cardId (not path) so the right sibling is restored.
+		const current = useCardStore.getState().cardsById.get(entry.cardId);
 		if (current) {
 			useCardStore
 				.getState()
@@ -1248,7 +1301,9 @@ export default class LearningSystemPlugin extends Plugin {
 			await truncateLastEntry(
 				this.app,
 				this.normalizedCardsRoot(),
-				{ path: entry.path, date: entry.logDate },
+				// `cardId` (compound for cloze siblings) matches the log
+				// entry's `path` field — see ReviewLogEntry doc-comment.
+				{ path: entry.cardId, date: entry.logDate },
 			);
 		} catch (e) {
 			console.error("[learning-system] undo log truncation failed:", e);
@@ -1261,7 +1316,7 @@ export default class LearningSystemPlugin extends Plugin {
 
 	async gradeNextDue(rating: Grade): Promise<void> {
 		try {
-			const cards = Array.from(useCardStore.getState().cardsByPath.values());
+			const cards = Array.from(useCardStore.getState().cardsById.values());
 			const card = pickNext(cards);
 			if (!card) {
 				new Notice("No cards due.");
@@ -1295,10 +1350,15 @@ export default class LearningSystemPlugin extends Plugin {
 				);
 				break;
 			case "parsed":
-				store.setCard(outcome.card);
+				// Atomic re-parse: drops stale siblings and inserts the
+				// new set in one state update. Necessary for the
+				// cloze-removed / cloze-renumbered cases where a
+				// removeCard + setCard sequence would briefly expose
+				// "no cards from this path" to React renders.
+				store.replaceCardsForPath(file.path, outcome.cards);
 				// Refresh logs are intentionally chatty — easy to filter by [learning-system].
 				console.debug(
-					`[learning-system] re-validated: ${outcome.card.path}`,
+					`[learning-system] re-validated: ${file.path} (${outcome.cards.length} card(s))`,
 				);
 				break;
 		}

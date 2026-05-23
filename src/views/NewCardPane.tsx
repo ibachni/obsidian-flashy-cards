@@ -42,7 +42,7 @@ interface Props {
 
 export function NewCardPane({ active }: Props) {
 	const { app, plugin } = usePluginContext();
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
 
 	const [topic, setTopic] = useState("");
 	const [section, setSection] = useState("");
@@ -64,8 +64,8 @@ export function NewCardPane({ active }: Props) {
 	}, [active]);
 
 	const cardArray = useMemo(
-		() => Array.from(cardsByPath.values()),
-		[cardsByPath],
+		() => Array.from(cardsById.values()),
+		[cardsById],
 	);
 
 	const allTopics = useMemo(() => {

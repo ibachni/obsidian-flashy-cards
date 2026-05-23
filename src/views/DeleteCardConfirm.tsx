@@ -26,6 +26,7 @@ interface Props {
  */
 export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 	const { app } = usePluginContext();
+	const cardsById = useCardStore((s) => s.cardsById);
 
 	const cancelRef = useRef<HTMLButtonElement>(null);
 	useEffect(() => {
@@ -38,6 +39,15 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 	const display = `${card.fm.topic}/${slug}.md`;
 	const reps = card.fm.fsrs_reps;
 	const repsLabel = `${reps} ${reps === 1 ? "review" : "reviews"}`;
+
+	// For cloze cards, the file backs N siblings — delete removes them
+	// all because we trash the whole file. Count the siblings so the
+	// confirm copy is honest about the blast radius.
+	const siblingCount =
+		card.clozeIndex === null
+			? 0
+			: Array.from(cardsById.values()).filter((c) => c.path === card.path)
+					.length;
 
 	const onDelete = async () => {
 		try {
@@ -77,7 +87,9 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 	return (
 		<div className="flex flex-col gap-4">
 			<h2 className="text-base font-medium text-fg-strong! m-0">
-				Delete this card?
+				{siblingCount > 1
+					? `Delete this file and all ${siblingCount} cloze siblings?`
+					: "Delete this card?"}
 			</h2>
 
 			<div className="flex flex-col gap-1 text-sm text-muted!">
@@ -88,7 +100,9 @@ export function DeleteCardConfirm({ card, onAfterDelete, onClosed }: Props) {
 			</div>
 
 			<p className="text-sm text-muted! m-0">
-				The file moves to your system trash and can be restored.
+				{siblingCount > 1
+					? `This row is one of ${siblingCount} cloze siblings sharing the same file. Deleting removes the file — every sibling goes with it. The file moves to your system trash and can be restored.`
+					: "The file moves to your system trash and can be restored."}
 			</p>
 
 			<div className="flex justify-end gap-2">

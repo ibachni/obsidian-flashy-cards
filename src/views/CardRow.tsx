@@ -14,7 +14,12 @@ interface Props {
 }
 
 export function CardRow({ card, onClick, onEdit, onDelete }: Props) {
-	const slug = card.path.split("/").pop()?.replace(/\.md$/, "") ?? card.path;
+	const baseSlug =
+		card.path.split("/").pop()?.replace(/\.md$/, "") ?? card.path;
+	// Cloze siblings share a path; the `· cN` suffix distinguishes them
+	// in the list and makes the `aria-label`s unique for screen readers.
+	const slug =
+		card.clozeIndex !== null ? `${baseSlug} · c${card.clozeIndex}` : baseSlug;
 	const kind = deriveStateTagKind(card);
 
 	// Row body + action icons are sibling buttons inside the <li> rather
@@ -37,7 +42,7 @@ export function CardRow({ card, onClick, onEdit, onDelete }: Props) {
 			<button
 				type="button"
 				aria-label={`Edit ${slug}`}
-				title="Edit card"
+				title={`Edit ${slug}`}
 				className="ls-flat shrink-0 inline-flex items-center justify-center rounded p-1 text-muted! hover:text-fg-strong! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
 				onClick={() => onEdit(card)}
 			>
@@ -46,7 +51,7 @@ export function CardRow({ card, onClick, onEdit, onDelete }: Props) {
 			<button
 				type="button"
 				aria-label={`Delete ${slug}`}
-				title="Delete card"
+				title={`Delete ${slug}`}
 				className="ls-flat shrink-0 inline-flex items-center justify-center rounded p-1 text-muted! hover:text-state-overdue! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
 				onClick={() => onDelete(card)}
 			>

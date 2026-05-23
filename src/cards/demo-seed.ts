@@ -71,6 +71,106 @@ function pickGrade(retention: number): 1 | 2 | 3 | 4 {
 	return Math.random() < 0.65 ? 2 : 1;
 }
 
+/**
+ * Build the on-disk content for the cloze demo card. Pure — no I/O,
+ * no Obsidian imports — so the YAML round-trip can be regression-
+ * tested against the schema without a vault mock.
+ *
+ * `today` is injected so tests can pin the date for snapshot stability.
+ * In production the caller passes a freshly computed local-ISO date.
+ */
+export function buildClozeExampleContent(today: string): string {
+	// Per-sibling slots. All `new` and due `today` so the card
+	// surfaces immediately in the picker. Each slot is identical
+	// except for the index key — the parser projects each into a flat
+	// ParsedCard at read time.
+	const slotYaml = (): string =>
+		[
+			`    due: ${today}`,
+			`    stability: 0`,
+			`    difficulty: 0`,
+			`    elapsed_days: 0`,
+			`    scheduled_days: 0`,
+			`    learning_steps: 0`,
+			`    reps: 0`,
+			`    lapses: 0`,
+			`    state: new`,
+			`    last_review:`,
+		].join("\n");
+
+	return [
+		"---",
+		"type: flashcard",
+		"topic: Cloze demo",
+		`created: ${today}`,
+		`modified: ${today}`,
+		"fsrs_clozes:",
+		`  "1":`,
+		slotYaml(),
+		`  "2":`,
+		slotYaml(),
+		`  "3":`,
+		slotYaml(),
+		"tags:",
+		"  - demo",
+		"  - es",
+		"related: []",
+		"---",
+		"",
+		"# Question",
+		"",
+		"Conjugate _hablar_ (to speak) in the present indicative:",
+		"- yo {{c1::hablo}}",
+		"- tú {{c2::hablas}}",
+		"- él/ella {{c3::habla}}",
+		"",
+		"# Answer",
+		"",
+		"Regular **-ar** verb. Stem: _habl-_. Endings: _-o_, _-as_, _-a_, _-amos_, _-áis_, _-an_.",
+		"",
+	].join("\n");
+}
+
+/**
+ * Drop a single working cloze-deletion card into the cards root so a
+ * fresh install can see the format end-to-end: three sibling rows in
+ * Browse (each suffixed `· c1` / `· c2` / `· c3`), masked question in
+ * Review, accent-highlighted answer after reveal.
+ *
+ * Hand-rolled YAML rather than going through `serializeCard` because
+ * the latter assumes flat `fsrs_*` scalars — cloze cards use the
+ * `fsrs_clozes` map instead. Skips if the target file already exists
+ * so re-running the command doesn't clobber an in-progress edit.
+ *
+ * Returns the path written, or `null` if a file already existed
+ * there. Notice firing lives in the caller (`runSeedClozeExample` in
+ * main.tsx) so message ownership matches the `seedDemoLog` pattern.
+ *
+ * Caveat: `adapter.mkdir` is non-recursive on some Obsidian adapters.
+ * For a deep cardsRoot like `Notes/learning/cards/` where an
+ * intermediate directory doesn't exist, the mkdir call will fail with
+ * a generic error. The default cardsRoot is single-level (one folder)
+ * so this is rarely hit; the user can create the parent folder by
+ * hand and re-run if it does.
+ */
+export async function seedClozeExample(
+	app: App,
+	cardsRoot: string,
+): Promise<string | null> {
+	const root = cardsRoot.endsWith("/") ? cardsRoot : cardsRoot + "/";
+	const path = `${root}cloze-example.md`;
+	const adapter = app.vault.adapter;
+	if (await adapter.exists(path)) return null;
+
+	const content = buildClozeExampleContent(localIsoDate(new Date()));
+
+	if (!(await adapter.exists(cardsRoot))) {
+		await adapter.mkdir(cardsRoot);
+	}
+	await adapter.write(path, content);
+	return path;
+}
+
 export async function seedDemoLog(
 	app: App,
 	cardsRoot: string,

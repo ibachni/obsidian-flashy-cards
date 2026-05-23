@@ -31,7 +31,9 @@ function fm(overrides: Partial<CardFrontmatterT> = {}): CardFrontmatterT {
 
 function entry(overrides: Partial<UndoEntry> = {}): UndoEntry {
 	return {
+		cardId: "Cards/dns/foo.md",
 		path: "Cards/dns/foo.md",
+		clozeIndex: null,
 		previousFm: fm(),
 		logDate: "2026-05-20",
 		...overrides,

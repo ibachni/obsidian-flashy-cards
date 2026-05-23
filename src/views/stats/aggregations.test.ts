@@ -16,7 +16,9 @@ function card(
 	state: ParsedCard["fm"]["fsrs_state"] = "review",
 ): ParsedCard {
 	return {
+		id: path,
 		path,
+		clozeIndex: null,
 		question: "q",
 		answer: "a",
 		fm: {

@@ -1,6 +1,7 @@
 import { Notice, TFile } from "obsidian";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { maskField, revealField } from "../cards/cloze";
 import { rewriteBody } from "../cards/edit-card";
 import type { ParsedCard } from "../cards/parser";
 import { useCardStore } from "../cards/store";
@@ -46,13 +47,22 @@ export function EditCardModal({
 	registerConfirmClose,
 }: Props) {
 	const { app } = usePluginContext();
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
+
+	// Cloze siblings carry the raw `{{cN::…}}` source on `rawQuestion`
+	// / `rawAnswer`; non-cloze cards don't. Pre-fill with the source so
+	// the user edits the syntax they wrote, not the rendered mask /
+	// highlighted view — saving the masked view would erase the cloze
+	// markup. Falls through to `card.question` / `card.answer` for
+	// non-cloze cards (where the two are identical).
+	const initialQuestion = card.rawQuestion ?? card.question;
+	const initialAnswer = card.rawAnswer ?? card.answer;
 
 	const [topic, setTopic] = useState(card.fm.topic);
 	const [section, setSection] = useState(card.fm.section ?? "");
 	const [tags, setTags] = useState<Set<string>>(new Set(card.fm.tags));
-	const [question, setQuestion] = useState(card.question);
-	const [answer, setAnswer] = useState(card.answer);
+	const [question, setQuestion] = useState(initialQuestion);
+	const [answer, setAnswer] = useState(initialAnswer);
 	const [saving, setSaving] = useState(false);
 
 	// Capture the open-time snapshot once. Dirty detection compares
@@ -62,8 +72,8 @@ export function EditCardModal({
 		topic: card.fm.topic,
 		section: card.fm.section ?? "",
 		tags: new Set(card.fm.tags),
-		question: card.question,
-		answer: card.answer,
+		question: initialQuestion,
+		answer: initialAnswer,
 	});
 
 	const questionRef = useRef<MarkdownFieldHandle>(null);
@@ -72,8 +82,8 @@ export function EditCardModal({
 	}, []);
 
 	const cardArray = useMemo(
-		() => Array.from(cardsByPath.values()),
-		[cardsByPath],
+		() => Array.from(cardsById.values()),
+		[cardsById],
 	);
 
 	const allTopics = useMemo(() => {
@@ -176,6 +186,14 @@ export function EditCardModal({
 
 			// Optimistic store update — mirrors gradeAndPersist's pattern.
 			// metadataCache.changed reconciles a tick later.
+			//
+			// For cloze siblings the in-memory `question` / `answer`
+			// fields are the pre-rendered masked / highlighted views;
+			// recompute them from the trimmed raw source so the store
+			// stays consistent with what the parser would emit. The
+			// raw source goes on `rawQuestion` / `rawAnswer` so the
+			// next edit also sees the source. Non-cloze cards just
+			// store the raw text — those two are identical.
 			const updatedFm: CardFrontmatterT = {
 				...card.fm,
 				topic: nextTopic,
@@ -183,11 +201,19 @@ export function EditCardModal({
 				tags: nextTags,
 				modified: today,
 			};
+			const isCloze = card.clozeIndex !== null;
 			useCardStore.getState().setCard({
 				...card,
 				fm: updatedFm,
-				question: trimmedQuestion,
-				answer: trimmedAnswer,
+				question: isCloze
+					? maskField(trimmedQuestion, card.clozeIndex as number)
+					: trimmedQuestion,
+				answer: isCloze
+					? revealField(trimmedAnswer, card.clozeIndex as number)
+					: trimmedAnswer,
+				...(isCloze
+					? { rawQuestion: trimmedQuestion, rawAnswer: trimmedAnswer }
+					: {}),
 			});
 
 			const slug = card.path.split("/").pop() ?? card.path;

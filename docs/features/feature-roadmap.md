@@ -35,9 +35,7 @@ These are the things a user runs into within the first hour of real use. Without
 These are features mature SRS apps ship and that a returning Anki/Mochi/RemNote user will look for immediately.
 
 ### 7. Cloze deletions
-The single biggest format gap. Allow `{{c1::hidden}}` syntax in the question field; the parser splits one card into N sibling cards (one per cloze group), all sharing the source markdown. This roughly doubles the value of the plugin for language/vocab/definitions.
-
-Schema change: add `fsrs_cloze_index: number | null` and treat cloze siblings as separate cards keyed by `<path>#c<n>`. New picker logic. New rendering path that masks the cloze in question and reveals it in answer.
+**Shipped** — see [cloze-deletions.md](./cloze-deletions.md). `{{cN::text}}` syntax in question and/or answer expands one .md file into N sibling cards, each keyed by `<path>#c<N>` and carrying its own FSRS state in a frontmatter `fsrs_clozes` map. Parser pre-renders the masked question (active cloze hidden as `[…]`, other clozes show their text — Anki convention) and the revealed answer (active spans wrapped in `<mark class="ls-cloze-active">` for the accent tint). Browse rows distinguish siblings with a `· cN` suffix; Review pane meta strip shows the active cloze index. Edit modal pre-fills from the raw source so editing doesn't erase cloze syntax. Dev command `seed-cloze-example` drops a 3-sibling Spanish-verb demo card into the cards root.
 
 ### 8. Daily new-card cap + per-day review cap
 Two integers in settings: `dailyNewLimit` (default 10) and `dailyReviewCap` (default unlimited). The picker honors both. Stops the "new-card avalanche" that happens when a user adds 50 cards in a batch and is then crushed by reviews three days later.

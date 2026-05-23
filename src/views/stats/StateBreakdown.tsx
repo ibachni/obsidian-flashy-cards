@@ -5,10 +5,10 @@ import { groupCardsByState } from "./aggregations";
 import { STATE_BAR_STYLE, STATE_LABEL, STATE_ORDER } from "./state-colors";
 
 export function StateBreakdown() {
-	const cardsByPath = useCardStore((s) => s.cardsByPath);
+	const cardsById = useCardStore((s) => s.cardsById);
 	const counts = useMemo(
-		() => groupCardsByState(Array.from(cardsByPath.values())),
-		[cardsByPath],
+		() => groupCardsByState(Array.from(cardsById.values())),
+		[cardsById],
 	);
 	const total =
 		counts.new + counts.learning + counts.review + counts.relearning;

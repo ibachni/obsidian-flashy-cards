@@ -2,7 +2,13 @@ import { create } from "zustand";
 import type { ParsedCard } from "./parser";
 
 interface CardStoreState {
-	cardsByPath: Map<string, ParsedCard>;
+	/**
+	 * Cards keyed by their in-memory `id`: `<path>` for non-cloze cards,
+	 * `<path>#c<N>` for cloze siblings. The store treats each sibling as
+	 * an independent card — picker, Review, Browse all iterate values()
+	 * and never need to know whether two cards share a source file.
+	 */
+	cardsById: Map<string, ParsedCard>;
 	invalidByPath: Map<string, string>;
 	/**
 	 * Optional list of card paths the Review pane should iterate over.
@@ -14,46 +20,86 @@ interface CardStoreState {
 
 	setCard: (card: ParsedCard) => void;
 	setInvalid: (path: string, error: string) => void;
+	/**
+	 * Remove every card backed by `path`. For non-cloze cards this is a
+	 * single-key delete (id === path). For cloze cards it sweeps the map
+	 * for every sibling, since one file can back N entries.
+	 */
 	removeCard: (path: string) => void;
+	/**
+	 * Atomic re-parse: drop every existing card backed by `path` and
+	 * insert the new sibling set in a single state update. Eliminates
+	 * the intermediate "no cards from this path" frame that a separate
+	 * removeCard + setCard sequence would expose to React renders.
+	 *
+	 * Used by the watcher's refreshCard flow. Also clears any prior
+	 * invalid mark for the path — a successful re-parse supersedes
+	 * earlier failures.
+	 */
+	replaceCardsForPath: (path: string, cards: ParsedCard[]) => void;
 	clear: () => void;
 	setReviewScope: (paths: string[] | null) => void;
 	clearReviewScope: () => void;
 }
 
 export const useCardStore = create<CardStoreState>((set) => ({
-	cardsByPath: new Map(),
+	cardsById: new Map(),
 	invalidByPath: new Map(),
 	reviewScope: null,
 
 	setCard: (card) =>
 		set((s) => {
-			const next = new Map(s.cardsByPath);
-			next.set(card.path, card);
+			const next = new Map(s.cardsById);
+			next.set(card.id, card);
 			const inv = new Map(s.invalidByPath);
 			inv.delete(card.path);
-			return { cardsByPath: next, invalidByPath: inv };
+			return { cardsById: next, invalidByPath: inv };
 		}),
 
 	setInvalid: (path, error) =>
 		set((s) => {
-			const next = new Map(s.cardsByPath);
-			next.delete(path);
+			// Drop every card backed by this path — an "invalid" event
+			// supersedes the previous parse, including all cloze siblings.
+			const next = new Map(s.cardsById);
+			for (const [id, card] of next) {
+				if (card.path === path) next.delete(id);
+			}
 			const inv = new Map(s.invalidByPath);
 			inv.set(path, error);
-			return { cardsByPath: next, invalidByPath: inv };
+			return { cardsById: next, invalidByPath: inv };
 		}),
 
 	removeCard: (path) =>
 		set((s) => {
-			const next = new Map(s.cardsByPath);
-			next.delete(path);
+			const next = new Map(s.cardsById);
+			for (const [id, card] of next) {
+				if (card.path === path) next.delete(id);
+			}
 			const inv = new Map(s.invalidByPath);
 			inv.delete(path);
-			return { cardsByPath: next, invalidByPath: inv };
+			return { cardsById: next, invalidByPath: inv };
+		}),
+
+	replaceCardsForPath: (path, cards) =>
+		set((s) => {
+			const next = new Map(s.cardsById);
+			// Drop stale siblings of this path before inserting the new
+			// set — handles the cloze-removed / cloze-renumbered cases
+			// where a re-parse produces fewer or differently-numbered
+			// siblings than the prior parse.
+			for (const [id, card] of next) {
+				if (card.path === path) next.delete(id);
+			}
+			for (const card of cards) {
+				next.set(card.id, card);
+			}
+			const inv = new Map(s.invalidByPath);
+			inv.delete(path);
+			return { cardsById: next, invalidByPath: inv };
 		}),
 
 	clear: () =>
-		set({ cardsByPath: new Map(), invalidByPath: new Map() }),
+		set({ cardsById: new Map(), invalidByPath: new Map() }),
 
 	setReviewScope: (paths) => set({ reviewScope: paths }),
 	clearReviewScope: () => set({ reviewScope: null }),

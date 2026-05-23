@@ -8,7 +8,9 @@ function card(
 	overrides: Partial<ParsedCard["fm"]> = {},
 ): ParsedCard {
 	return {
+		id: path,
 		path,
+		clozeIndex: null,
 		question: "q",
 		answer: "a",
 		fm: {

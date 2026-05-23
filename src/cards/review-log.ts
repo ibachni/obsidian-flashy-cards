@@ -1,5 +1,16 @@
 import type { App } from "obsidian";
 
+/**
+ * Append-only JSONL log of every grade. One file per month at
+ * `<cardsRoot>/.learning-system/history/YYYY-MM.jsonl`.
+ *
+ * Since the cloze-deletion work landed, the `path` field can carry a
+ * compound `<path>#c<N>` identifier for cloze siblings (e.g.
+ * `vocab/hablar.md#c2`). Consumers that want to aggregate per-file
+ * stats should split on `#c` before grouping; consumers tracking
+ * per-sibling history can read `path` verbatim. The schema didn't
+ * change — only the data flowing through `path` did.
+ */
 export interface ReviewLogEntry {
 	path: string;
 	topic: string;

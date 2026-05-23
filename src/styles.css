@@ -408,6 +408,37 @@
 		cursor: not-allowed !important;
 	}
 
+	/* Cloze sibling highlight — wraps the active cloze span in the
+	   answer view (parser emits `<mark class="ls-cloze-active">…</mark>`).
+	   Tints with the brand accent at low alpha so the highlight reads
+	   as "this is what you were supposed to recall" without shouting.
+	   Lives in @layer utilities so the `<mark>` element's default
+	   yellow background and black text don't bleed through — same
+	   cascade reason as the rest of the file. */
+	.ls-cloze-active {
+		background-color: color-mix(
+			in srgb,
+			rgb(var(--ls-accent)) 22%,
+			transparent
+		) !important;
+		color: var(--ls-fg-strong) !important;
+		border-radius: 0.25rem;
+		padding: 0 0.2em;
+	}
+	/* Perceptually-uniform mixing where available — matches the
+	   srgb-then-oklab pattern Tailwind utilities use elsewhere in this
+	   file so the highlight tint reads identically to other accent
+	   tints on cream and dark. */
+	@supports (color: color-mix(in lab, red, red)) {
+		.ls-cloze-active {
+			background-color: color-mix(
+				in oklab,
+				var(--color-accent) 22%,
+				transparent
+			) !important;
+		}
+	}
+
 	/* Heatmap cell colors — 5 buckets ramping from subtle (no activity)
 	   up through accent saturation. Built off --ls-accent / --ls-subtle
 	   so cream / dark theming works without per-bucket overrides. */
