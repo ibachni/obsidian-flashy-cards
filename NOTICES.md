@@ -1,6 +1,6 @@
 # Third-party notices
 
-Learning System bundles or depends on the following open-source
+Flashy Cards bundles or depends on the following open-source
 packages. Their licenses and copyright notices are reproduced
 below, satisfying the attribution clauses where required.
 

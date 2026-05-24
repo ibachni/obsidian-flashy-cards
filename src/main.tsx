@@ -156,7 +156,7 @@ class LearningSystemView extends ItemView {
 
 	getDisplayText(): string {
 		// eslint-disable-next-line obsidianmd/ui/sentence-case -- product brand name
-		return "Learning System";
+		return "Flashy Cards";
 	}
 
 	getIcon(): string {
@@ -679,7 +679,7 @@ export default class LearningSystemPlugin extends Plugin {
 		);
 
 		// eslint-disable-next-line obsidianmd/ui/sentence-case -- product brand name
-		this.addRibbonIcon("brain", "Learning System", () => {
+		this.addRibbonIcon("brain", "Flashy Cards", () => {
 			void this.activateView();
 		});
 
@@ -1100,7 +1100,7 @@ export default class LearningSystemPlugin extends Plugin {
 			// leaf. Spelling that out so the user isn't confused when the
 			// pane stays empty.
 			new Notice(
-				`Seeded ${count} demo log entries. Grade any card or reopen the Learning System leaf to refresh Stats.`,
+				`Seeded ${count} demo log entries. Grade any card or reopen the Flashy Cards leaf to refresh Stats.`,
 			);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);

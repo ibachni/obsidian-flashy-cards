@@ -1,4 +1,4 @@
-# Learning System
+# Flashy Cards
 
 Spaced-repetition flashcards inside Obsidian. Each card is a plain markdown file in your vault — no database, no lock-in. Scheduling uses [FSRS](https://github.com/open-spaced-repetition/ts-fsrs), the same algorithm that powers modern Anki.
 
@@ -15,11 +15,11 @@ Plus: cloze deletions (`{{c1::...}}`), image occlusion, drag-and-drop images, ed
 
 ## Quickstart
 
-1. Open the Learning System pane (brain icon in the ribbon, or **Open Learning System** in the command palette).
+1. Open the Flashy Cards pane (brain icon in the ribbon, or **Open Flashy Cards** in the command palette).
 2. Hit **Create**, fill in a topic, question, and answer, then **Save**. The card lands at `<cards root>/<topic>/<slug>.md`.
 3. Switch to **Review** — your new card is due immediately. Press `Space` to reveal, `1`–`4` to grade.
 
-Set the cards root and other defaults under **Settings → Learning System**.
+Set the cards root and other defaults under **Settings → Flashy Cards**.
 
 ## Card format
 
@@ -53,9 +53,9 @@ npm install
 npm run build
 ```
 
-Copy `main.js`, `manifest.json`, and `styles.css` to `<your vault>/.obsidian/plugins/learning-system/`, then enable **Learning System** under **Settings → Community plugins**.
+Copy `main.js`, `manifest.json`, and `styles.css` to `<your vault>/.obsidian/plugins/flashy-cards/`, then enable **Flashy Cards** under **Settings → Community plugins**.
 
-For development, `npm run dev` watches both the TypeScript bundle and Tailwind styles. Pointing the dev folder directly at `.obsidian/plugins/learning-system/` and reloading Obsidian (`Cmd/Ctrl-R`) gives you a tight loop.
+For development, `npm run dev` watches both the TypeScript bundle and Tailwind styles. Pointing the dev folder directly at `.obsidian/plugins/flashy-cards/` and reloading Obsidian (`Cmd/Ctrl-R`) gives you a tight loop.
 
 ## License
 

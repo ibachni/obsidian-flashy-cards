@@ -38,7 +38,7 @@ export function UnifiedPane({ mode, mountedModes, onSetMode }: Props) {
 			{/* Extra `mb-4` (on top of parent `gap-4`) separates the app
 			    shell from the active pane's metadata. */}
 			<header className="mb-4 flex shrink-0 flex-col items-center gap-2">
-				<h1 className="ls-brand m-0">Learning System</h1>
+				<h1 className="ls-brand m-0">Flashy Cards</h1>
 				<ModeNav active={mode} onChange={onSetMode} />
 			</header>
 			{/* Conditional className (not the `hidden` attribute): UA
