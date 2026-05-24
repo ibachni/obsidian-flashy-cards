@@ -2,7 +2,7 @@
 	"id": "flashy-cards",
 	"name": "Flashy Cards",
 	"version": "1.0.3",
-	"minAppVersion": "1.0.0",
+	"minAppVersion": "1.0.3",
 	"description": "Review flashcards with FSRS spaced-repetition scheduling.",
 	"author": "Nicolas Ibach",
 	"authorUrl": "https://github.com/ibachni",
